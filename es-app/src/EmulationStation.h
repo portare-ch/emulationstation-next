@@ -20,7 +20,11 @@
 #define SCREENSCRAPER_SOFTNAME			"Batocera-Emulationstation"
 #elif RETROBAT
 #define SCREENSCRAPER_SOFTNAME			"Retrobat-Emulationstation"
-#elif ROCKNIX
+#elif PORTAREOS
+// Deliberately still ROCKNIX. ScreenScraper registers a softname per
+// distribution, which is what the entries above are, and it refuses requests
+// carrying one it does not know. Renaming this to match the fork would stop
+// scraping working. Change it only once PortareOS has a softname of its own.
 #define SCREENSCRAPER_SOFTNAME			"ROCKNIX-Emulationstation"
 #else
 #define SCREENSCRAPER_SOFTNAME			"Emulationstation"

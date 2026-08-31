@@ -57,7 +57,7 @@ GuiRetroAchievementsSettings::GuiRetroAchievementsSettings(Window* window) : Gui
 		addSaveFunc([rsounds_choices] { SystemConf::getInstance()->set("global.retroachievements.sound", rsounds_choices->getSelected()); });
 	}
 
-#if defined(ROCKNIX)
+#if defined(PORTAREOS)
         if (Utils::Platform::GetEnv("DEVICE_ANALOG_STICKS_LED_CONTROL") == "true") {
                 // Enable LED Notifications
                 auto cheevos_led_enabled = std::make_shared<SwitchComponent>(mWindow);
