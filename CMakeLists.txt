@@ -20,7 +20,7 @@ option(BCM "BCM host" OFF)
 
 option(BATOCERA "Set to ON to enable BATOCERA specific code" OFF)
 option(RETROBAT "Set to ON to enable RETROBAT specific code" OFF)
-option(ROCKNIX "Set to ON to enable ROCKNIX specific code" OFF)
+option(PORTAREOS "Set to ON to enable PORTAREOS specific code" OFF)
 
 option(ENABLE_FILEMANAGER "Set to ON to enable f1 shortcut for filesystem" OFF)
 option(DISABLE_KODI "Set to ON to disable kodi in menu" OFF)
@@ -121,9 +121,9 @@ if(RETROBAT)
   add_definitions(-DRETROBAT)
 endif()
 
-if(ROCKNIX)
-  MESSAGE("ROCKNIX build")
-  add_definitions(-DROCKNIX)
+if(PORTAREOS)
+  MESSAGE("PORTAREOS build")
+  add_definitions(-DPORTAREOS)
 endif()
 
 if(BATTERYPLUS)

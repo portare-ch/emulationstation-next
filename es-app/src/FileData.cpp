@@ -615,7 +615,7 @@ std::string FileData::getlaunchCommand(LaunchGameOptions& options, bool includeC
 			command = Utils::String::replace(command, "%NETPLAY%", "--connect " + options.ip + " --port " + std::to_string(options.port) + " --nick " + SystemConf::getInstance()->get("global.netplay.nickname"));
 		else
 #endif
-#if ROCKNIX
+#if PORTAREOS
 			command = Utils::String::replace(command, "%NETPLAY%", "--connect " + options.ip + " --port " + std::to_string(options.port) + " --nick " + SystemConf::getInstance()->get("global.netplay.nickname"));
 #else
 			command = Utils::String::replace(command, "%NETPLAY%", "-netplaymode " + mode + " -netplayport " + std::to_string(options.port) + " -netplayip " + options.ip + session + pass);
@@ -628,7 +628,7 @@ std::string FileData::getlaunchCommand(LaunchGameOptions& options, bool includeC
 			command = Utils::String::replace(command, "%NETPLAY%", "--host --port " + SystemConf::getInstance()->get("global.netplay.port") + " --nick " + SystemConf::getInstance()->get("global.netplay.nickname"));
 		else
 #endif
-#if ROCKNIX
+#if PORTAREOS
 			command = Utils::String::replace(command, "%NETPLAY%", "--host --port " + SystemConf::getInstance()->get("global.netplay.port") + " --nick " + SystemConf::getInstance()->get("global.netplay.nickname"));
 #else
 			command = Utils::String::replace(command, "%NETPLAY%", "-netplaymode host");

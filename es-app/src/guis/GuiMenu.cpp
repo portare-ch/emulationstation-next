@@ -169,7 +169,7 @@ GuiMenu::GuiMenu(Window *window, bool animate) : GuiComponent(window), mMenu(win
 	
 	if (isFullUI)
 	{
-#if defined(BATOCERA) || defined(ROCKNIX)
+#if defined(BATOCERA) || defined(PORTAREOS)
 		addEntry(_("GAME SETTINGS").c_str(), true, [this] { openGamesSettings(); }, "iconGames");
 		addEntry(GuiControllersSettings::getControllersSettingsLabel(), true, [window] { GuiControllersSettings::openControllersSettings(window); }, "iconControllers");
 		addEntry(_("USER INTERFACE SETTINGS").c_str(), true, [this] { openUISettings(); }, "iconUI");
@@ -254,7 +254,7 @@ void GuiMenu::openResetOptions()
 
 	s->addGroup(_("DATA MANAGEMENT"));
 	s->addEntry(_("BACKUP CONFIGURATIONS"), true, [window] {
-	window->pushGui(new GuiMsgBox(window, _("WARNING THIS WILL RESTART EMULATIONSTATION!\n\nAFTER THE SCRIPT IS DONE REMEMBER TO COPY THE FILE /storage/roms/backup/ROCKNIX_BACKUP.zip TO SOME PLACE SAFE OR IT WILL BE DELETED ON NEXT REBOOT!\n\nBACKUP CURRENT CONFIG AND RESTART?"), _("YES"),
+	window->pushGui(new GuiMsgBox(window, _("WARNING THIS WILL RESTART EMULATIONSTATION!\n\nAFTER THE SCRIPT IS DONE REMEMBER TO COPY THE FILE /storage/roms/backup/portareos_BACKUP.zip TO SOME PLACE SAFE OR IT WILL BE DELETED ON NEXT REBOOT!\n\nBACKUP CURRENT CONFIG AND RESTART?"), _("YES"),
 		[] {
 		Utils::Platform::runSystemCommand("/usr/bin/run \"/usr/bin/backuptool backup\"", "", nullptr);
 		}, _("NO"), nullptr));
@@ -371,8 +371,8 @@ void GuiMenu::addVersionInfo()
 
 	if (!ApiSystem::getInstance()->getVersion().empty())
 	{
-		if (ApiSystem::getInstance()->getApplicationName() == "ROCKNIX")
-			label = "ROCKNIX " + ApiSystem::getInstance()->getVersion() + " (" + ApiSystem::getInstance()->getVersion(true) + ")";
+		if (ApiSystem::getInstance()->getApplicationName() == "PortareOS")
+			label = "PortareOS " + ApiSystem::getInstance()->getVersion() + " (" + ApiSystem::getInstance()->getVersion(true) + ")";
 		else
 		{
 			std::string aboutInfo = ApiSystem::getInstance()->getApplicationName() + " V" + ApiSystem::getInstance()->getVersion();
@@ -819,7 +819,7 @@ void GuiMenu::openDeveloperSettings()
 	s->addWithLabel(_("FPS LIMIT"), fpsLimit);
 	s->addSaveFunc([fpsLimit] { Settings::setFpsLimit(fpsLimit->getSelected()); });
 
-#if defined(BATOCERA) || defined(ROCKNIX)
+#if defined(BATOCERA) || defined(PORTAREOS)
 	// overscan
 	auto overscan_enabled = std::make_shared<SwitchComponent>(mWindow);
 	overscan_enabled->setState(Settings::getInstance()->getBool("Overscan"));
@@ -1120,7 +1120,7 @@ void GuiMenu::openDeveloperSettings()
 		s->addWithLabel(_("RETROARCH MENU DRIVER"), retroarchRgui);
 		s->addSaveFunc([retroarchRgui] { SystemConf::getInstance()->set("global.retroarch.menu_driver", retroarchRgui->getSelected()); });
 	}
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 	auto invertJoy = std::make_shared<SwitchComponent>(mWindow);
 	invertJoy->setState(Settings::getInstance()->getBool("InvertButtons"));
 	s->addWithDescription(_("SWITCH CONFIRM & CANCEL BUTTONS IN EMULATIONSTATION"), _("Switches the South and East buttons' functionality"), invertJoy);
@@ -1158,7 +1158,7 @@ void GuiMenu::openDeveloperSettings()
 	}
 //#endif
 
-#if defined(BATOCERA) || defined(ROCKNIX)
+#if defined(BATOCERA) || defined(PORTAREOS)
 	// PS3 controller enable
 	auto enable_ps3 = std::make_shared<SwitchComponent>(mWindow);
 	enable_ps3->setState(SystemConf::getInstance()->getBool("controllers.ps3.enabled"));
@@ -1529,7 +1529,7 @@ void GuiMenu::openSystemSettings()
 	auto keyboard_variant = std::make_shared<OptionListComponent<std::string>>(window, _("KEYBOARD VARIANT"), false);
 
 	// Populate Layouts
-	auto layouts = getScriptOutput("/usr/bin/rocknix-keyboard list-layouts");
+	auto layouts = getScriptOutput("/usr/bin/portareos-keyboard list-layouts");
 	bool layoutFound = false;
 	
 	for (const auto& l : layouts)
@@ -1548,7 +1548,7 @@ void GuiMenu::openSystemSettings()
 		bool noneSelected = (curVariant == "none" || curVariant.empty());
 		keyboard_variant->add(_("NONE"), "none", noneSelected);
 
-		auto variants = getScriptOutput("/usr/bin/rocknix-keyboard list-variants " + layoutCode);
+		auto variants = getScriptOutput("/usr/bin/portareos-keyboard list-variants " + layoutCode);
 		bool variantFound = false;
 		for (const auto& v : variants)
 		{
@@ -1570,7 +1570,7 @@ void GuiMenu::openSystemSettings()
 		keyboard_variant->clear();
 		keyboard_variant->add(_("NONE"), "none", true);
 		
-		auto variants = getScriptOutput("/usr/bin/rocknix-keyboard list-variants " + newLayout);
+		auto variants = getScriptOutput("/usr/bin/portareos-keyboard list-variants " + newLayout);
 		for (const auto& v : variants)
 		{
 			keyboard_variant->add(v.second, v.first, false);
@@ -1590,7 +1590,7 @@ void GuiMenu::openSystemSettings()
 			std::string selLayout = keyboard_layout->getSelected();
 			std::string selVariant = keyboard_variant->getSelected();
 			
-			std::string cmd = "/usr/bin/rocknix-keyboard set \"" + selLayout + "\" \"" + selVariant + "\"";
+			std::string cmd = "/usr/bin/portareos-keyboard set \"" + selLayout + "\" \"" + selVariant + "\"";
 			if (system(cmd.c_str()) == 0) {
 				SystemConf::getInstance()->set("system.kblayout", selLayout);
 				SystemConf::getInstance()->set("system.kbvariant", selVariant);
@@ -1603,7 +1603,7 @@ void GuiMenu::openSystemSettings()
 #endif
 
 	// Timezone
-#if defined(ROCKNIX)
+#if defined(PORTAREOS)
 	auto tzChoices = std::make_shared<OptionListComponent<std::string> >(mWindow, _("SELECT YOUR TIME ZONE"), false);
 	std::string currentTZ = SystemConf::getInstance()->get("system.timezone");
 	if (currentTZ.empty())
@@ -1704,11 +1704,11 @@ void GuiMenu::openSystemSettings()
 			}
 		}
 	});
-#if defined(ROCKNIX)
+#if defined(PORTAREOS)
       // Add option to toggle mangohud
       if (Utils::Platform::GetEnv("DEVICE_MANGOHUD_SUPPORT") == "true"){
         auto mangohud_toggle = std::make_shared<SwitchComponent>(mWindow);
-        bool internalmoduleEnabled = SystemConf::getInstance()->get("rocknix.mangohud.enabled") == "1";
+        bool internalmoduleEnabled = SystemConf::getInstance()->get("portareos.mangohud.enabled") == "1";
         mangohud_toggle->setState(internalmoduleEnabled);
         s->addWithLabel(_("ENABLE MANGOHUD OVERLAY"), mangohud_toggle);
         mangohud_toggle->setOnChangedCallback([mangohud_toggle] {
@@ -1718,14 +1718,14 @@ void GuiMenu::openSystemSettings()
                         Utils::Platform::runSystemCommand("/usr/bin/mangohud_set enable", "", nullptr);
                 }
                 bool mangohud_state = mangohud_toggle->getState();
-                SystemConf::getInstance()->set("rocknix.mangohud.enabled", mangohud_state ? "1" : "0");
+                SystemConf::getInstance()->set("portareos.mangohud.enabled", mangohud_state ? "1" : "0");
         });
       }
 
       // Add option to toggle touchscreen keyboard
       if (Utils::Platform::GetEnv("DEVICE_HAS_TOUCHSCREEN") == "true"){
         auto touchscreen_keyboard_toggle = std::make_shared<SwitchComponent>(mWindow);
-        bool internalmoduleEnabled = SystemConf::getInstance()->get("rocknix.touchscreen-keyboard.enabled") == "1";
+        bool internalmoduleEnabled = SystemConf::getInstance()->get("portareos.touchscreen-keyboard.enabled") == "1";
         touchscreen_keyboard_toggle->setState(internalmoduleEnabled);
         s->addWithLabel(_("ENABLE TOUCHSCREEN KEYBOARD"), touchscreen_keyboard_toggle);
         touchscreen_keyboard_toggle->setOnChangedCallback([touchscreen_keyboard_toggle] {
@@ -1735,18 +1735,18 @@ void GuiMenu::openSystemSettings()
                         Utils::Platform::runSystemCommand("systemctl start touchkeyboard", "", nullptr);
                 }
                 bool touchscreen_keyboard_state = touchscreen_keyboard_toggle->getState();
-                SystemConf::getInstance()->set("rocknix.touchscreen-keyboard.enabled", touchscreen_keyboard_state ? "1" : "0");
+                SystemConf::getInstance()->set("portareos.touchscreen-keyboard.enabled", touchscreen_keyboard_state ? "1" : "0");
         });
       }
 
-      // Add toggle to enable / disabled ROCKNIX Screenshot
+      // Add toggle to enable / disabled PORTAREOS Screenshot
       auto rocknix_screenshot_enabled = std::make_shared<SwitchComponent>(mWindow);
-      bool rocknixscreenshotenabled = SystemConf::getInstance()->get("rocknix.screenshot.enabled") == "1";
-      rocknix_screenshot_enabled->setState(SystemConf::getInstance()->getBool("rocknix.screenshot.enabled"));
-      s->addWithLabel(_("ENABLE ROCKNIX SCREENSHOT"), rocknix_screenshot_enabled);
+      bool rocknixscreenshotenabled = SystemConf::getInstance()->get("portareos.screenshot.enabled") == "1";
+      rocknix_screenshot_enabled->setState(SystemConf::getInstance()->getBool("portareos.screenshot.enabled"));
+      s->addWithLabel(_("ENABLE PORTAREOS SCREENSHOT"), rocknix_screenshot_enabled);
       rocknix_screenshot_enabled->setOnChangedCallback([rocknix_screenshot_enabled] {
               bool rocknixscreenshotenabled = rocknix_screenshot_enabled->getState();
-                     SystemConf::getInstance()->set("rocknix.screenshot.enabled", rocknixscreenshotenabled ? "1" : "0");
+                     SystemConf::getInstance()->set("portareos.screenshot.enabled", rocknixscreenshotenabled ? "1" : "0");
       });
 #endif
 	// KODI SETTINGS
@@ -1763,7 +1763,7 @@ void GuiMenu::openSystemSettings()
 	}
 #endif
 
-#if defined(BATOCERA) || defined(ROCKNIX)
+#if defined(BATOCERA) || defined(PORTAREOS)
 	s->addGroup(_("HARDWARE"));
 #endif
 
@@ -1802,13 +1802,13 @@ void GuiMenu::openSystemSettings()
 	  }
 	}
 
-#if defined(ROCKNIX)
+#if defined(PORTAREOS)
 	// Bottom screen content - only visible when 2+ displays detected
   if (Utils::Platform::GetEnv("DEVICE_HAS_DUAL_SCREEN") == "true"){
 	if (brightnesses.size() >= 2)
 	{    
 		auto bottomScreenType = std::make_shared<OptionListComponent<std::string>>(mWindow, _("BOTTOM SCREEN CONTENT"), false);
-		std::string selectedBottomScreenType = SystemConf::getInstance()->get("rocknix.bottomscreen.type");
+		std::string selectedBottomScreenType = SystemConf::getInstance()->get("portareos.bottomscreen.type");
 		if (selectedBottomScreenType.empty())
 			selectedBottomScreenType = "vc";
 
@@ -1823,7 +1823,7 @@ void GuiMenu::openSystemSettings()
 		{
 			if (bottomScreenType->changed())
 			{
-				SystemConf::getInstance()->set("rocknix.bottomscreen.type", bottomScreenType->getSelected());
+				SystemConf::getInstance()->set("portareos.bottomscreen.type", bottomScreenType->getSelected());
 				SystemConf::getInstance()->saveSystemConf();
 			}
 		});
@@ -1970,7 +1970,7 @@ void GuiMenu::openSystemSettings()
 		s->addWithLabel(_("AUTODETECT GAMES CARD"), mount_games);
 		mount_games->setOnChangedCallback([this, s, mount_games] {
 			SystemConf::getInstance()->setBool("system.automount", mount_games->getState());
-			Utils::Platform::runSystemCommand("/usr/bin/systemctl restart rocknix-automount", "", nullptr);
+			Utils::Platform::runSystemCommand("/usr/bin/systemctl restart portareos-automount", "", nullptr);
 		});
 		if (Utils::FileSystem::exists("/storage/.ms_supported") && MountGamesEnabled)
 		{
@@ -1981,7 +1981,7 @@ void GuiMenu::openSystemSettings()
 			overlayState->setOnChangedCallback([this, s, overlayState] {
 				bool overlayStateEnabled = overlayState->getState();
 				SystemConf::getInstance()->setBool("system.merged.storage", overlayState->getState());
-				Utils::Platform::runSystemCommand("/usr/bin/systemctl restart rocknix-automount", "", nullptr);
+				Utils::Platform::runSystemCommand("/usr/bin/systemctl restart portareos-automount", "", nullptr);
 			});
 			auto optionsMSDevice = std::make_shared<OptionListComponent<std::string> >(mWindow, _("MERGED STORAGE PRIMARY CARD"), false);
 			std::string selectedMSDevice = SystemConf::getInstance()->get("system.merged.device");
@@ -1997,7 +1997,7 @@ void GuiMenu::openSystemSettings()
 					mWindow->pushGui(new GuiMsgBox(mWindow, _("WARNING: CHANGING THE PRIMARY CARD CAN CAUSE ACCESS TO GAMES TO BE LOST, REQUIRING MANUAL INTERVENTION TO CORRECT. CONTINUE?"), _("YES"), [this, optionsMSDevice, selectedMSDevice]
 					{
 						SystemConf::getInstance()->set("system.merged.device", optionsMSDevice->getSelected());
-						Utils::Platform::runSystemCommand("/usr/bin/systemctl restart rocknix-automount " + optionsMSDevice->getSelected(), "", nullptr);
+						Utils::Platform::runSystemCommand("/usr/bin/systemctl restart portareos-automount " + optionsMSDevice->getSelected(), "", nullptr);
 					}, _("NO"), nullptr));
 				}
 			});
@@ -2716,7 +2716,7 @@ void GuiMenu::openSystemSettings()
         s->addEntry(_("MULTISCREENS"), true, [this] { openMultiScreensSettings(); });
 #endif
 
-#if defined(BATOCERA) || defined(ROCKNIX)
+#if defined(BATOCERA) || defined(PORTAREOS)
 	int red, green, blue;
 	bool ledSupported = ApiSystem::getInstance()->getLED(red, green, blue);
 
@@ -3088,7 +3088,7 @@ void GuiMenu::dtbOverlayItem(Window* mWindow, GuiSettings *s, const std::string 
 			mWindow->pushGui(new GuiMsgBox(mWindow, _("WARNING: You are altering "
 				"hardware parameters that may yield your system unstable or unbootable. "
 				"In this case you will need to recover by manually editing "
-				"extlinux/extlinux.conf on the ROCKNIX partition from a PC, by "
+				"extlinux/extlinux.conf on the PortareOS partition from a PC, by "
 				"removing the whole line starting with: FDTOVERLAYS. \n "
 				"The changes will be applied on next reboot"),
 				_("Reboot now"), [] { Utils::Platform::quitES(Utils::Platform::QuitMode::REBOOT); },
@@ -3189,13 +3189,13 @@ void GuiMenu::openSystemOptionsConfiguration(Window* mWindow, std::string config
 		}
 	});
 
-#if defined(ROCKNIX)
+#if defined(PORTAREOS)
 	// Per game/core/emu Mangohud
 	if (Utils::Platform::GetEnv("DEVICE_MANGOHUD_SUPPORT") == "true"){
 		auto mangohud = std::make_shared<OptionListComponent<std::string>>(mWindow, _("MANGOHUD OVERLAY"));
-		mangohud->addRange({ {("DEFAULT"), "" }, { _("ENABLED"), "1" },{ _("DISABLED") , "0" } }, SystemConf::getInstance()->get(configName + ".rocknix.mangohud.enabled"));
+		mangohud->addRange({ {("DEFAULT"), "" }, { _("ENABLED"), "1" },{ _("DISABLED") , "0" } }, SystemConf::getInstance()->get(configName + ".portareos.mangohud.enabled"));
 		guiSystemOptions->addWithLabel(_("MANGOHUD OVERLAY"), mangohud);
-		guiSystemOptions->addSaveFunc([mangohud, configName] { SystemConf::getInstance()->set(configName + ".rocknix.mangohud.enabled", mangohud->getSelected()); });
+		guiSystemOptions->addSaveFunc([mangohud, configName] { SystemConf::getInstance()->set(configName + ".portareos.mangohud.enabled", mangohud->getSelected()); });
 	}
 #endif
 
@@ -3525,14 +3525,14 @@ void GuiMenu::addFeatureItem(Window* window, GuiSettings* settings, const Custom
 	{
 		item->add(_("AUTO"), "auto", storedValue.empty() || storedValue == "auto");
 
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 		auto shaders = ApiSystem::getInstance()->getShaderList(configName != "global" ? system : "", configName != "global" ? emulator : "", configName != "global" ? core : "");
 		if (shaders.size() > 0)
 		{
 #endif
 			item->add(_("NONE"), "none", storedValue == "none");
 
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 			for (auto shader : shaders)
 			  item->add(pgettext("game_options", Utils::String::toUpper(shader).c_str()), shader, storedValue == shader);
 		}
@@ -3546,14 +3546,14 @@ void GuiMenu::addFeatureItem(Window* window, GuiSettings* settings, const Custom
 	{
 		item->add(_("AUTO"), "auto", storedValue.empty() || storedValue == "auto");
 
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 		auto videofilters = ApiSystem::getInstance()->getVideoFilterList(configName != "global" ? system : "", configName != "global" ? emulator : "", configName != "global" ? core : "");
 		if (videofilters.size() > 0)
 		{
 #endif
 			item->add(_("NONE"), "none", storedValue == "none");
 
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 			for (auto videofilter : videofilters)
 				item->add(pgettext("game_options", Utils::String::toUpper(videofilter).c_str()), videofilter, storedValue == videofilter);
 		}
@@ -3908,7 +3908,7 @@ void GuiMenu::openGamesSettings()
 	// Shaders preset
 	if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::SHADERS) && !hasGlobalFeature("shaderset"))
 	{
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 		auto installedShaders = ApiSystem::getInstance()->getShaderList("", "", "");
 		if (installedShaders.size() > 0)
 		{
@@ -3919,7 +3919,7 @@ void GuiMenu::openGamesSettings()
 			shaders_choices->add(_("AUTO"), "auto", currentShader.empty() || currentShader == "auto");
 			shaders_choices->add(_("NONE"), "none", currentShader == "none");
 
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 			for (auto shader : installedShaders)
 				shaders_choices->add(_(Utils::String::toUpper(shader).c_str()), shader, currentShader == shader);
 			
@@ -3933,13 +3933,13 @@ void GuiMenu::openGamesSettings()
 
 			s->addWithLabel(_("SHADER SET"), shaders_choices);
 			s->addSaveFunc([shaders_choices] { SystemConf::getInstance()->set("global.shaderset", shaders_choices->getSelected()); });
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 		}
 #endif
 	}
 
 	// Video Filters
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 	if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::VIDEOFILTERS) && !hasGlobalFeature("videofilters"))
 	{
 		auto installedVideofilters = ApiSystem::getInstance()->getVideoFilterList("", "", "");
@@ -3955,7 +3955,7 @@ void GuiMenu::openGamesSettings()
 			videofilters_choices->add(_("AUTO"), "auto", currentVideofilter.empty() || currentVideofilter == "auto");
 			videofilters_choices->add(_("NONE"), "none", currentVideofilter == "none");
 
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 			for (auto videofilter : installedVideofilters)
 				videofilters_choices->add(_(Utils::String::toUpper(videofilter).c_str()), videofilter, currentVideofilter == videofilter);
 
@@ -3969,7 +3969,7 @@ void GuiMenu::openGamesSettings()
 
 			s->addWithLabel(_("VIDEO FILTER"), videofilters_choices);
 			s->addSaveFunc([videofilters_choices] { SystemConf::getInstance()->set("global.videofilters", videofilters_choices->getSelected()); });
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 		}
 #endif
 	}
@@ -4735,7 +4735,7 @@ void GuiMenu::openThemeConfiguration(Window* mWindow, GuiComponent* s, std::shar
 				if (Settings::getInstance()->setString(system->getName() + ".ShowCheevosIcon", showCheevos->getSelected()))
 					themeconfig->setVariable("reloadAll", true);
 			});
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 		// Show gun icons
 		auto defGI = Settings::getInstance()->getBool("ShowGunIconOnGames") ? _("YES") : _("NO");
 		auto curGI = Settings::getInstance()->getString(system->getName() + ".ShowGunIconOnGames");
@@ -5107,7 +5107,7 @@ void GuiMenu::openUISettings()
 		}		
 	}
 
-#if defined(ROCKNIX)
+#if defined(PORTAREOS)
 	s->addGroup(_("CONTROL OPTIONS"));
 	auto invertJoy = std::make_shared<SwitchComponent>(mWindow);
 	invertJoy->setState(Settings::getInstance()->getBool("InvertButtons"));
@@ -5156,7 +5156,7 @@ void GuiMenu::openUISettings()
 		s->addOptionList(_("SHOW BATTERY STATUS"), { { _("NO"), "" },{ _("ICON"), "icon" },{ _("ICON AND TEXT"), "text" } }, "ShowBattery", true);
 
 	s->addGroup(_("GAMELIST OPTIONS"));
-#if defined(ROCKNIX)
+#if defined(PORTAREOS)
 	s->addSwitch(_("SHOW VIDEO PREVIEWS"), "ShowVideoPreviews", true, [s] { s->setVariable("reloadAll", true); });
 #endif
 	s->addSwitch(_("SHOW FAVORITES ON TOP"), "FavoritesFirst", true, [s] { s->setVariable("reloadAll", true); });
@@ -5180,7 +5180,7 @@ void GuiMenu::openUISettings()
 	s->addSwitch(_("SHOW SAVESTATE ICON"), "ShowSaveStates", true, [s] { s->setVariable("reloadAll", true); });
 	s->addSwitch(_("SHOW MANUAL ICON"), "ShowManualIcon", true, [s] { s->setVariable("reloadAll", true); });	
 	s->addSwitch(_("SHOW RETROACHIEVEMENTS ICON"), "ShowCheevosIcon", true, [s] { s->setVariable("reloadAll", true); });
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 	s->addSwitch(_("SHOW GUN ICON"), "ShowGunIconOnGames", true, [s] { s->setVariable("reloadAll", true); });
 	s->addSwitch(_("SHOW WHEEL ICON"), "ShowWheelIconOnGames", true, [s] { s->setVariable("reloadAll", true); });
 	s->addSwitch(_("SHOW TRACKBALL ICON"), "ShowTrackballIconOnGames", true, [s] { s->setVariable("reloadAll", true); });
@@ -6182,7 +6182,7 @@ void GuiMenu::popSpecificConfigurationGui(Window* mWindow, std::string title, st
 	if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::SHADERS) &&
 		systemData->isFeatureSupported(currentEmulator, currentCore, EmulatorFeatures::shaders))
 	{
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 		auto installedShaders = ApiSystem::getInstance()->getShaderList(systemData->getName(), currentEmulator, currentCore);
 		if (installedShaders.size() > 0)
 		{
@@ -6193,7 +6193,7 @@ void GuiMenu::popSpecificConfigurationGui(Window* mWindow, std::string title, st
 			shaders_choices->add(_("AUTO"), "auto", currentShader.empty() || currentShader == "auto");
 			shaders_choices->add(_("NONE"), "none", currentShader == "none");
 
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 			for (auto shader : installedShaders)
 				shaders_choices->add(_(Utils::String::toUpper(shader).c_str()), shader, currentShader == shader);
 
@@ -6207,13 +6207,13 @@ void GuiMenu::popSpecificConfigurationGui(Window* mWindow, std::string title, st
 
 			systemConfiguration->addWithLabel(_("SHADER SET"), shaders_choices);
 			systemConfiguration->addSaveFunc([configName, shaders_choices] { SystemConf::getInstance()->set(configName + ".shaderset", shaders_choices->getSelected()); });
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 		}
 #endif
 	}
 
 	// Video Filters preset
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 	if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::VIDEOFILTERS) &&
 		systemData->isFeatureSupported(currentEmulator, currentCore, EmulatorFeatures::videofilters))
 	{
@@ -6231,7 +6231,7 @@ void GuiMenu::popSpecificConfigurationGui(Window* mWindow, std::string title, st
 			videofilters_choices->add(_("AUTO"), "auto", currentVideofilter.empty() || currentVideofilter == "auto");
 			videofilters_choices->add(_("NONE"), "none", currentVideofilter == "none");
 
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 			for (auto videofilter : installedVideofilters)
 				videofilters_choices->add(_(Utils::String::toUpper(videofilter).c_str()), videofilter, currentVideofilter == videofilter);
 
@@ -6245,7 +6245,7 @@ void GuiMenu::popSpecificConfigurationGui(Window* mWindow, std::string title, st
 
 			systemConfiguration->addWithLabel(_("VIDEO FILTER"), videofilters_choices);
 			systemConfiguration->addSaveFunc([configName, videofilters_choices] { SystemConf::getInstance()->set(configName + ".videofilter", videofilters_choices->getSelected()); });
-#if !defined(ROCKNIX)
+#if !defined(PORTAREOS)
 		}
 #endif
 	}

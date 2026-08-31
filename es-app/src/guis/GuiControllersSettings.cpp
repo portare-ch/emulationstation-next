@@ -129,7 +129,7 @@ GuiControllersSettings::GuiControllersSettings(Window* wnd, int autoSel) : GuiSe
 	{
 		addGroup(_("BLUETOOTH"));
 
-#if defined(BATOCERA) || defined(ROCKNIX)
+#if defined(BATOCERA) || defined(PORTAREOS)
 		// Bluetooth enable
 		bool baseBtEnabled = SystemConf::getInstance()->getBool("controllers.bluetooth.enabled");
 		auto enable_bt = std::make_shared<SwitchComponent>(mWindow);
@@ -174,7 +174,7 @@ GuiControllersSettings::GuiControllersSettings(Window* wnd, int autoSel) : GuiSe
 		// PAIR A BLUETOOTH CONTROLLER
 		addEntry(_("PAIR BLUETOOTH PADS AUTOMATICALLY"), false, [window] { ThreadedBluetooth::start(window); });
 
-#if defined(BATOCERA) || defined(ROCKNIX) || defined(WIN32)
+#if defined(BATOCERA) || defined(PORTAREOS) || defined(WIN32)
 		// PAIR A BLUETOOTH CONTROLLER OR BT AUDIO DEVICE
 		addEntry(_("PAIR A BLUETOOTH DEVICE MANUALLY"), false, [window]
 		{
@@ -187,7 +187,7 @@ GuiControllersSettings::GuiControllersSettings(Window* wnd, int autoSel) : GuiSe
 		// FORGET BLUETOOTH CONTROLLERS OR BT AUDIO DEVICES
 		addEntry(_("BLUETOOTH DEVICE LIST"), false, [window] { window->pushGui(new GuiBluetoothDevices(window)); });
 
-#if defined(BATOCERA) || defined(ROCKNIX)
+#if defined(BATOCERA) || defined(PORTAREOS)
 		}
 #endif
 	}
