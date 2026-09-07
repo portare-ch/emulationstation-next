@@ -76,12 +76,18 @@ jobs:
         run: cmake --build build -j"$(nproc)"
 
       # A build that produced no binary is a green tick that means nothing.
+      #
+      # Not under build/: CMakeLists.txt forces EXECUTABLE_OUTPUT_PATH to
+      # CMAKE_CURRENT_SOURCE_DIR on non-Windows, so an out-of-source build
+      # still drops the binary at the repository root.
       - name: Check the binary exists
         run: |
-          BIN="$(find build -name 'emulationstation' -type f -perm -u+x | head -1)"
+          BIN="$(find . -path ./.git -prune -o \
+                        -name emulationstation -type f -perm -u+x -print | head -1)"
           if [ -z "${BIN}" ]; then
             echo "::error::the build produced no emulationstation binary"
-            find build -maxdepth 2 -type f -perm -u+x
+            find . -path ./.git -prune -o -type f -perm -u+x -newer CMakeLists.txt -print | head -20
             exit 1
           fi
           ls -lh "${BIN}"
+          file "${BIN}"
