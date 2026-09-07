@@ -404,9 +404,12 @@ std::pair<std::string, int> ApiSystem::torrentUpdateSystem(const std::function<v
 }
 
 bool ApiSystem::canLocalUpdate() {
-	LOG(LogDebug) << "ApiSystem::canMediaUpgrade";
+	LOG(LogDebug) << "ApiSystem::canLocalUpdate";
 
-	FILE *pipe = popen("batocera-upgrade --check-media-upgrade", "r");
+	// Was batocera-upgrade --check-media-upgrade, inherited from a fork whose
+	// scripts are not installed here, so this always returned false and the
+	// "START LOCAL MEDIA UPDATE" entry it gates never appeared at all.
+	FILE *pipe = popen("portareos-update check-media", "r");
 	if (pipe == NULL)
 		return false;
 
