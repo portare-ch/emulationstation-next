@@ -404,9 +404,9 @@ std::pair<std::string, int> ApiSystem::torrentUpdateSystem(const std::function<v
 }
 
 bool ApiSystem::canLocalUpdate() {
-	LOG(LogDebug) << "ApiSystem::canMediaUpgrade";
+	LOG(LogDebug) << "ApiSystem::canLocalUpdate";
 
-	FILE *pipe = popen("batocera-upgrade --check-media-upgrade", "r");
+	FILE *pipe = popen("portareos-update check-media", "r");
 	if (pipe == NULL)
 		return false;
 
