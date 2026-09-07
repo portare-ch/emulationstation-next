@@ -10,9 +10,6 @@
 #include "utils/VectorEx.h"
 #include "SaveStateConfigFile.h"
 
-#if WIN32
-#include "Win32ApiSystem.h"
-#endif
 
 SaveState* SaveStateRepository::_empty = new SaveState(-99);
 
