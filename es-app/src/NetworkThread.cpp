@@ -2,6 +2,7 @@
 #include "ApiSystem.h"
 #include "SystemConf.h"
 #include "guis/GuiMsgBox.h"
+#include "guis/GuiUpdate.h"
 #include "LocaleES.h"
 #include "Log.h"
 #include <chrono>
@@ -145,7 +146,16 @@ void NetworkThread::OnWatcherChanged(IWatcher* component)
 {
 	if (component == &mCheckUpdatesComponent)
 	{
-		mWindow->displayNotificationMessage(_U("\uF019  ") + _("UPDATE AVAILABLE") + std::string(": ") + mCheckUpdatesComponent.getLastUpdateMessage());
+		// OnWatcherChanged runs on a watcher thread; pushing a Gui from here
+		// would race the renderer.
+		std::string version = mCheckUpdatesComponent.getLastUpdateMessage();
+		mWindow->postToUiThread([this, version]()
+		{
+			mWindow->pushGui(new GuiMsgBox(mWindow,
+				_("UPDATE AVAILABLE") + std::string(": ") + version + "\n" + _("INSTALL IT NOW?"),
+				_("YES"), [this] { new ThreadedUpdater(mWindow, "LOCAL"); },
+				_("NO"), nullptr));
+		});
 		return;
 	}
 
