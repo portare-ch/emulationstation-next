@@ -1,0 +1,87 @@
+name: Build
+
+# A compile gate, not a release build.
+#
+# The point is that a change to ApiSystem.cpp or GuiMenu.cpp is checked by
+# something before it reaches a five-hour distribution build. Without this the
+# first thing that ever compiles the fork is the image build, which is a poor
+# place to discover a missing brace.
+#
+# It builds natively for x86_64 rather than cross-compiling for the Nova. A
+# native build catches what this is for (syntax, types, missing symbols,
+# dangling references after a removal) and needs no toolchain, no container and
+# no secrets. It cannot catch anything aarch64-specific, and does not try to.
+#
+# The flags match projects/PortareOS/packages/ui/emulationstation/package.mk,
+# so the code paths compiled here are the ones that ship. Changing them there
+# without changing them here means CI stops covering what we build.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config gettext \
+            libsdl2-dev libsdl2-mixer-dev \
+            libfreeimage-dev libfreetype-dev \
+            libcurl4-openssl-dev rapidjson-dev \
+            libasound2-dev libpulse-dev \
+            libgl1-mesa-dev libgles-dev \
+            libvlc-dev libvlccore-dev \
+            libpugixml-dev libudev-dev
+
+      # ccache because a full build is thousands of files and most pushes touch
+      # a handful. The key rotates per run so each build starts from the newest
+      # cache and writes its own; restore-keys is what actually reuses it.
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: es-${{ github.ref_name }}
+          max-size: 500M
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DPORTAREOS=1 \
+            -DDISABLE_KODI=1 \
+            -DENABLE_FILEMANAGER=0 \
+            -DCEC=0 \
+            -DENABLE_PULSE=1 \
+            -DUSE_SYSTEM_PUGIXML=1 \
+            -DGLES3=1
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      # A build that produced no binary is a green tick that means nothing.
+      - name: Check the binary exists
+        run: |
+          BIN="$(find build -name 'emulationstation' -type f -perm -u+x | head -1)"
+          if [ -z "${BIN}" ]; then
+            echo "::error::the build produced no emulationstation binary"
+            find build -maxdepth 2 -type f -perm -u+x
+            exit 1
+          fi
+          ls -lh "${BIN}"
