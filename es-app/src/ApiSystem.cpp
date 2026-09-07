@@ -2117,9 +2117,6 @@ bool ApiSystem::isScriptingSupported(ScriptId script)
 	case ApiSystem::BIOSINFORMATION:
 		executables.push_back("portareos-systems");
 		break;
-	case ApiSystem::DISKFORMAT:
-		executables.push_back("batocera-format");
-		break;
 	case ApiSystem::OVERCLOCK:
 		executables.push_back("batocera-overclock");
 		break;
@@ -2142,39 +2139,18 @@ bool ApiSystem::isScriptingSupported(ScriptId script)
 	case ApiSystem::EVMAPY:
 		executables.push_back("evmapy");
 		break;
-	case ApiSystem::BATOCERAPREGAMELISTSHOOK:
-		executables.push_back("batocera-preupdate-gamelists-hook");
-		break;
-	case ApiSystem::TIMEZONES:
-		executables.push_back("batocera-timezone");
-		break;
-	case ApiSystem::AUDIODEVICE:
-		executables.push_back("set-audio");
-		break;		
 	case ApiSystem::BACKUP:
 		executables.push_back("portareos-sync");
 		break;
 	case ApiSystem::INSTALL:
 		executables.push_back("batocera-install");
 		break;	
-	case ApiSystem::SUPPORTFILE:
-		executables.push_back("batocera-support");
-		break;
 	case ApiSystem::UPGRADE:
 		executables.push_back("portareos-update");
 		break;
-	case ApiSystem::UPGRADEVIATORRENT:
-		executables.push_back("batocera-upgrade-torrent");
-		break;
 	case ApiSystem::SUSPEND:
 		return (Utils::FileSystem::exists("/usr/sbin/pm-suspend") && Utils::FileSystem::exists("/usr/bin/pm-is-supported") && executeScript("/usr/bin/pm-is-supported --suspend"));
-	case ApiSystem::VERSIONINFO:
-		executables.push_back("batocera-version");
-		break;
 	case ApiSystem::READPLANEMODE:
-	case ApiSystem::WRITEPLANEMODE:
-		executables.push_back("batocera-planemode");
-		break;
 	case ApiSystem::SERVICES:
 		executables.push_back("batocera-services");
 		break;

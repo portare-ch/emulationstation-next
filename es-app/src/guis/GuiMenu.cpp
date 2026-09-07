@@ -911,26 +911,6 @@ void GuiMenu::openDeveloperSettings()
 		}
 	});
 
-	if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::SUPPORTFILE))
-	{
-		// support
-		s->addEntry(_("CREATE A SUPPORT FILE"), true, [window] 
-		{
-			window->pushGui(new GuiMsgBox(window, _("CREATE A SUPPORT FILE? THIS INCLUDES ALL DATA IN YOUR SYSTEM FOLDER."), _("YES"),
-				[window] 
-				{
-					if (ApiSystem::getInstance()->generateSupportFile())
-						window->pushGui(new GuiMsgBox(window, _("SUPPORT FILE CREATED IN SAVES FOLDER"), _("OK")));
-					else
-						window->pushGui(new GuiMsgBox(window, _("SUPPORT FILE CREATION FAILED"), _("OK")));				
-				}, 
-				_("NO"), nullptr));
-		});
-	}
-
-	if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::DISKFORMAT))
-		s->addEntry(_("FORMAT A DISK"), true, [this] { openFormatDriveSettings(); });
-	
 	s->addWithDescription(_("CLEAN GAMELISTS & REMOVE UNUSED MEDIA"), _("Remove unused entries, and clean references to missing medias."), nullptr, [this, s]
 	{
 		mWindow->pushGui(new GuiMsgBox(mWindow, _("ARE YOU SURE?"), _("YES"), [&]
@@ -1330,62 +1310,6 @@ void GuiMenu::openUpdatesSettings(bool selectTorrentService)
 		  }
 	}
 
-	if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::UPGRADEVIATORRENT))
-	{
-	  updateGui->addGroup(_("SOFTWARE UPDATES VIA TORRENT"));
-
-	  // server
-	  bool service_torrent_status = false;
-	  auto services = ApiSystem::getInstance()->getServices();
-	  for(unsigned int i = 0; i < services.size(); i++) {
-	    if(services[i].enabled && services[i].name == "batocera_torrent") {
-	      service_torrent_status = true;
-	    }
-	  }
-	  auto server_switch = std::make_shared<SwitchComponent>(mWindow);
-	  server_switch->setState(service_torrent_status);
-
-	  updateGui->addWithLabel(_("SHARE UPDATES VIA TORRENT"), server_switch, selectTorrentService);
-
-	  server_switch->setOnChangedCallback([this, updateGui, service_torrent_status, server_switch]()
-	  {
-	    bool service_torrent_btn_enabled = server_switch->getState();
-	    if (service_torrent_btn_enabled != service_torrent_status)
-	      {
-		if(service_torrent_btn_enabled) {
-		  ApiSystem::getInstance()->enableService("batocera_torrent", true);
-		  mWindow->displayNotificationMessage(_U("\uF011  ") + _("Torrent update service started"));
-		} else {
-		  ApiSystem::getInstance()->enableService("batocera_torrent", false);
-		  mWindow->displayNotificationMessage(_U("\uF011  ") + _("Torrent update service stopped"));
-		}
-
-		delete updateGui;
-		openUpdatesSettings(true);
-	      }
-	  });
-
-	  // menu in case the service is up
-	  if(service_torrent_status) {
-	    std::string torrent_status = ApiSystem::getInstance()->torrentStatus();
-
-	    if (ApiSystem::getInstance()->torrentIsReadyForUpdate())
-	      {
-		//updateGui->addEntry(_("START UPDATE FROM TORRENT FILE"), false, [this]
-		updateGui->addWithLabel(_("START UPDATE FROM TORRENT FILE"),
-					std::make_shared<TextComponent>(mWindow, torrent_status, ThemeData::getMenuTheme()->Text.font, ThemeData::getMenuTheme()->Text.color),
-					false, [this]		
-		{
-		  mWindow->pushGui(new GuiMsgBox(mWindow, _("REALLY UPDATE FROM TORRENT FILE ?"),
-						 _("YES"), [this] { new ThreadedUpdater(mWindow, "TORRENT"); }, 
-						 _("NO"), nullptr));
-		});
-	      } else {
-	        updateGui->addWithLabel(_("DOWNLOAD STATUS"), std::make_shared<TextComponent>(mWindow, torrent_status, ThemeData::getMenuTheme()->Text.font, ThemeData::getMenuTheme()->Text.color));
-	    }
-	  }
-	}
-
 	mWindow->pushGui(updateGui);
 }
 
@@ -1616,29 +1540,6 @@ void GuiMenu::openSystemSettings()
 		}
 		SystemConf::getInstance()->set("system.timezone", tzChoices->getSelected());
 	});
-#else
-	if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::ScriptId::TIMEZONES))
-	{
-		VectorEx<std::string> availableTimezones = ApiSystem::getInstance()->getTimezones();
-		if (availableTimezones.size() > 0)
-		{
-			std::string currentTZ = ApiSystem::getInstance()->getCurrentTimezone();
-			if (currentTZ.empty() || !availableTimezones.any([currentTZ](const std::string& tz) { return tz == currentTZ; }))
-				currentTZ = "Europe/Paris";
-
-			auto tzChoices = std::make_shared<OptionListComponent<std::string> >(mWindow, _("SELECT YOUR TIME ZONE"), false);
-
-			for (auto tz : availableTimezones)
-				tzChoices->add(_(Utils::String::toUpper(tz).c_str()), tz, currentTZ == tz);
-
-			s->addWithLabel(_("TIME ZONE"), tzChoices);
-			s->addSaveFunc([tzChoices] 
-			{
-				if (SystemConf::getInstance()->set("system.timezone", tzChoices->getSelected()))
-					ApiSystem::getInstance()->setTimezone(tzChoices->getSelected());
-			});
-		}
-	}
 #endif
 
 	// Clock time format (14:42 or 2:42 pm)
@@ -2365,119 +2266,6 @@ void GuiMenu::openSystemSettings()
 	    s->addSaveFunc([this, videoModeOptionList] { SystemConf::getInstance()->set("es.resolution", videoModeOptionList->getSelected()); });
 	}
 #endif
-
-	if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::AUDIODEVICE))
-	{
-		std::vector<std::string> availableAudio = ApiSystem::getInstance()->getAvailableAudioOutputDevices();
-		if (availableAudio.size())
-		{
-			// audio device
-			auto optionsAudio = std::make_shared<OptionListComponent<std::string> >(mWindow, _("AUDIO OUTPUT"), false);
-
-			std::string selectedAudio = ApiSystem::getInstance()->getCurrentAudioOutputDevice();
-			if (selectedAudio.empty())
-				selectedAudio = "auto";
-
-			bool afound = false;
-			for (auto it = availableAudio.begin(); it != availableAudio.end(); it++)
-			{
-				std::vector<std::string> tokens = Utils::String::split(*it, '\t');
-
-				if (selectedAudio == tokens.at(0))
-					afound = true;
-
-				if (tokens.size() >= 2)
-				{
-					// concatenat the ending words
-					std::string vname = "";
-					for (unsigned int i = 1; i < tokens.size(); i++)
-					{
-						if (i > 2) vname += " ";
-						vname += tokens.at(i);
-					}
-					optionsAudio->add(vname, tokens.at(0), selectedAudio == tokens.at(0));
-				}
-				else
-					optionsAudio->add((*it), (*it), selectedAudio == tokens.at(0));
-			}
-
-			if (!afound)
-				optionsAudio->add(selectedAudio, selectedAudio, true);
-
-			s->addWithLabel(_("AUDIO OUTPUT"), optionsAudio);
-
-			s->addSaveFunc([this, optionsAudio, selectedAudio]
-			{
-				if (optionsAudio->changed())
-				{
-					SystemConf::getInstance()->set("audio.device", optionsAudio->getSelected());
-					ApiSystem::getInstance()->setAudioOutputDevice(optionsAudio->getSelected());
-				}
-				SystemConf::getInstance()->saveSystemConf();
-			});
-		}
-
-		// audio profile
-		std::vector<std::string> availableAudioProfiles = ApiSystem::getInstance()->getAvailableAudioOutputProfiles();
-		if (availableAudioProfiles.size())
-		{
-			auto optionsAudioProfile = std::make_shared<OptionListComponent<std::string> >(mWindow, _("AUDIO PROFILE"), false);
-
-			std::string selectedAudioProfile = ApiSystem::getInstance()->getCurrentAudioOutputProfile();
-			if (selectedAudioProfile.empty())
-				selectedAudioProfile = "auto";
-
-			bool afound = false;
-			for (auto it = availableAudioProfiles.begin(); it != availableAudioProfiles.end(); it++)
-			{
-				std::vector<std::string> tokens = Utils::String::split(*it, '\t');
-
-				if (selectedAudioProfile == tokens.at(0))
-					afound = true;
-
-				std::string vname = "";
-				if (tokens.size() >= 2)
-				{
-					// Check if the profile contains "bluez_card" and remove it from the display name
-					if (tokens.at(1).find("bluez_card") != std::string::npos)
-					{
-						// Skip the "bluez_card" token and use the remaining tokens for the display name
-						for (unsigned int i = 2; i < tokens.size(); i++)
-						{
-							if (i > 2) vname += " ";
-							vname += tokens.at(i);
-						}
-					}
-					else
-					{
-						// Normal concatenation for other profiles
-						for (unsigned int i = 1; i < tokens.size(); i++)
-						{
-							if (i > 1) vname += " ";
-							vname += tokens.at(i);
-						}
-					}
-					optionsAudioProfile->add(vname, tokens.at(0), selectedAudioProfile == tokens.at(0));
-				}
-				else
-					optionsAudioProfile->add((*it), (*it), selectedAudioProfile == tokens.at(0));
-			}
-
-			if (afound == false)
-				optionsAudioProfile->add(selectedAudioProfile, selectedAudioProfile, true);
-
-			s->addWithDescription(_("AUDIO PROFILE"), _("Available options can change depending on current audio output."), optionsAudioProfile);
-
-			s->addSaveFunc([this, optionsAudioProfile, selectedAudioProfile]
-			{
-				if (optionsAudioProfile->changed()) {
-					SystemConf::getInstance()->set("audio.profile", optionsAudioProfile->getSelected());
-					ApiSystem::getInstance()->setAudioOutputProfile(optionsAudioProfile->getSelected());
-				}
-				SystemConf::getInstance()->saveSystemConf();
-			});
-		}
-	}
 
 #ifdef BATOCERA
 	// video rotation
@@ -5922,25 +5710,6 @@ void GuiMenu::openQuitMenu_static(Window *window, bool quickAccessMenu, bool ani
 				}, "iconManual");
 		}
 
-		if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::WRITEPLANEMODE))
-		{
-			if (ApiSystem::getInstance()->isPlaneMode())
-			{
-				s->addEntry(_("DISABLE PLANE MODE"), false, [window, s]
-					{
-						ApiSystem::getInstance()->setPlaneMode(false);
-						delete s;
-					}, "iconPlanemode");
-			}
-			else 
-			{
-				s->addEntry(_("ENABLE PLANE MODE"), false, [window, s]
-					{
-						ApiSystem::getInstance()->setPlaneMode(true);
-						delete s;
-					}, "iconPlanemode");
-			}
-		}
 	}
 	
 	if (quickAccessMenu)

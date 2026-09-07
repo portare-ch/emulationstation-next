@@ -1379,8 +1379,6 @@ void ViewController::reloadAllGames(Window* window, bool deleteCurrentGui, bool 
 	ViewController::deinit();
 
 	// call external triggers
-	if (doCallExternalTriggers && ApiSystem::getInstance()->isScriptingSupported(ApiSystem::BATOCERAPREGAMELISTSHOOK))
-		ApiSystem::getInstance()->callBatoceraPreGameListsHook();
 
 	ViewController::init(window);
 
