@@ -7,10 +7,10 @@ name: Build
 # first thing that ever compiles the fork is the image build, which is a poor
 # place to discover a missing brace.
 #
-# It builds natively for x86_64 rather than cross-compiling for the Nova. A
-# native build catches what this is for (syntax, types, missing symbols,
-# dangling references after a removal) and needs no toolchain, no container and
-# no secrets. It cannot catch anything aarch64-specific, and does not try to.
+# Both architectures build natively on GitHub-hosted runners, no cross-compile
+# and no QEMU. aarch64 is the one that matters, since it is what the Nova runs;
+# x86_64 is kept because it costs nothing in wall time running in parallel, and
+# a failure on one arch but not the other localises a problem immediately.
 #
 # The flags match projects/PortareOS/packages/ui/emulationstation/package.mk,
 # so the code paths compiled here are the ones that ship. Changing them there
@@ -28,7 +28,15 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-24.04-arm, arch: aarch64 }
+          - { runner: ubuntu-24.04,     arch: x86_64 }
+
+    name: ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
 
     steps:
@@ -55,7 +63,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@v1
         with:
-          key: es-${{ github.ref_name }}
+          key: es-${{ matrix.arch }}-${{ github.ref_name }}
           max-size: 500M
 
       - name: Configure
