@@ -27,9 +27,6 @@
 #include "SystemRandomPlaylist.h"
 #include "ThemeData.h"
 
-#if WIN32
-#include "Win32ApiSystem.h"
-#endif
 
 #include <rapidjson/rapidjson.h>
 #include <rapidjson/document.h>

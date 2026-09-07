@@ -41,7 +41,6 @@
 #define pclose _pclose
 #define WIFEXITED(x) x
 #define WEXITSTATUS(x) x
-#include "Win32ApiSystem.h"
 #else
 #include <sys/statvfs.h>
 #include <ifaddrs.h>
@@ -51,31 +50,6 @@
 #include <arpa/inet.h>
 #endif
 
-/*
-#define script_config "batocera-config"; // canupdate, overscan enable, overscan disable, storage 'X', storage current, storage list, forgetBT, getRootPassword, lsoutputs
-#define script_overclock "batocera-overclock"; // list, set X
-#define script_upgrade "batocera-upgrade";
-#define script_sync "batocera-sync"; // sync
-#define script_install "batocera-install"; // listDisks, listArchs, install X Y
-#define script_scraper "batocera-scraper";
-#define script_kodi "batocera-kodi";
-#define script_wifi "batocera-wifi"; // scanlist, list, enable X Y, disable
-#define script_bluetooth "batocera-bluetooth"; // trust, list, remove 
-#define script_resolution "batocera-resolution"; // listModes
-#define script_sync "batocera-sync";   // list
-#define script_info "batocera-info"; // --full
-#define script_systems "batocera-systems"; // --filter
-#define script_suport "batocera-support";
-#define script_gameforce "batocera-gameforce"; // buttonColorLed X, powerLed X
-#define script_audio "batocera-audio"; // list, list-profiles, get-profile, set-profile 'X', get, set 'X'
-#define script_bezelproject "batocera-es-thebezelproject"; // list, install X, remove X
-#define script_format "batocera-format"; // listDisks, listFstypes
-#define script_store "batocera-store"; // list, update, refresh, clean-all, install "X", remove "X"
-#define script_preupdategamelists "batocera-preupdate-gamelists-hook";
-#define script_timezones "batocera-timezone"; // get, detect, set "X"
-#define script_padsinfos "batocera-padsinfo";
-#define script_swissknife "batocera-es-swissknife"; // --emukill"
-*/
 
 ApiSystem::ApiSystem() { }
 
@@ -86,11 +60,7 @@ ApiSystem *ApiSystem::getInstance()
 {
 	if (ApiSystem::instance == nullptr)
 	{
-#if WIN32
-		ApiSystem::instance = new Win32ApiSystem();
-#else
 		ApiSystem::instance = new ApiSystem();
-#endif
 		
 		IExternalActivity::Instance = ApiSystem::instance;
 	}

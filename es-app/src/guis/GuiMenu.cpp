@@ -75,10 +75,6 @@
 #include <cstdio>
 #endif
 
-#if WIN32
-#include "Win32ApiSystem.h"
-#endif
-
 #define fake_gettext_fade _("fade")
 #define fake_gettext_fastfade _("fast fade")
 #define fake_gettext_slide _("slide")
