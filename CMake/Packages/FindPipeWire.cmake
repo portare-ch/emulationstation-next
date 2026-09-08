@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026-present PortareOS (https://github.com/portare-ch)
+
 # Finds libpipewire, for talking to the audio graph without going through the
 # pulse compatibility layer.
 #

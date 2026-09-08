@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026-present PortareOS (https://github.com/portare-ch)
+
 #include "components/VideoMpvComponent.h"
 
 #include "renderers/Renderer.h"
