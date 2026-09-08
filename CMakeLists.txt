@@ -24,7 +24,7 @@ option(PORTAREOS "Set to ON to enable PORTAREOS specific code" OFF)
 
 option(ENABLE_FILEMANAGER "Set to ON to enable f1 shortcut for filesystem" OFF)
 option(DISABLE_KODI "Set to ON to disable kodi in menu" OFF)
-option(ENABLE_PULSE "Set to ON to enable pulse audio (versus alsa)" OFF)
+option(ENABLE_PIPEWIRE "Set to ON to drive volume through pipewire (versus alsa)" OFF)
 option(ENABLE_TTS "Set to ON to enable text to speech" OFF)
 option(USE_SYSTEM_PUGIXML "Set to ON to use system-wide pugixml library" OFF)
 
@@ -218,12 +218,12 @@ find_package(MPV REQUIRED)
 find_package(RapidJSON REQUIRED)
 
 if(NOT WIN32)
-	if(ENABLE_PULSE)
-	  MESSAGE("pulse audio enabled")
-	  find_package(PulseAudio REQUIRED)
-	  add_definitions(-D_ENABLE_PULSE_)
+	if(ENABLE_PIPEWIRE)
+	  MESSAGE("pipewire volume control enabled")
+	  find_package(PipeWire REQUIRED)
+	  add_definitions(-D_ENABLE_PIPEWIRE_)
 	else()
-	  MESSAGE("pulse audio disabled")
+	  MESSAGE("pipewire volume control disabled, falling back to alsa")
 	endif()
 
 	find_package(udev)
@@ -348,9 +348,9 @@ set(COMMON_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/es-core/src
 )
 
-if(ENABLE_PULSE)
+if(ENABLE_PIPEWIRE)
  LIST(APPEND COMMON_INCLUDE_DIRS
-    ${PULSEAUDIO_INCLUDE_DIR}
+    ${PIPEWIRE_INCLUDE_DIRS}
       )
 endif()
 
@@ -441,9 +441,9 @@ if(UDEV_FOUND)
       )
 endif()
 
-if(ENABLE_PULSE)
+if(ENABLE_PIPEWIRE)
  LIST(APPEND COMMON_LIBRARIES
-    ${PULSEAUDIO_LIBRARY}
+    ${PIPEWIRE_LIBRARIES}
       )
 endif()
 
