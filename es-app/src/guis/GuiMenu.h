@@ -56,9 +56,7 @@ private:
         void openNetworkSettings(bool selectWifiEnable = false, bool selectAdhocEnable = false);        
         void openQuitMenu();
         void openSystemInformations();
-        void openServicesSettings();
         void openMultiScreensSettings();
-        void openDmdSettings();
         void openDeveloperSettings();
         void openResetOptions();
         void openNetplaySettings(); 

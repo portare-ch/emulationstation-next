@@ -88,12 +88,6 @@ struct PadInfo
 	int battery;
 };
 
-struct Service
-{
-  std::string name;
-  bool enabled;
-};
-
 struct Hotkey
 {
   std::string button;
@@ -150,7 +144,6 @@ public:
 		GAMESETTINGS = 7,
 		DECORATIONS = 8,
 		SHADERS = 9,
-		OVERCLOCK = 11,
 		PDFEXTRACTION = 12,
 		BATOCERASTORE = 13,
 		EVMAPY = 14,
@@ -158,13 +151,10 @@ public:
 		THEBEZELPROJECT = 16,
 		PADSINFO = 17,
 		BACKUP = 21,
-		INSTALL = 22,
 		UPGRADE = 24,
 		SUSPEND = 25,
 		VIDEOFILTERS = 27,
-		SERVICES = 28,
 		READPLANEMODE = 29,
-		BACKGLASS = 31,
 		NFC = 32,
 	};
 
@@ -188,7 +178,6 @@ public:
 
     bool setOverscan(bool enable);
 
-    bool setOverclock(std::string mode);
 
 #ifdef BATOCERA
     bool areCpuMitigationsEnabled();
@@ -198,7 +187,6 @@ public:
     virtual std::pair<std::string, int> updateSystem(const std::function<void(const std::string)>& func = nullptr, bool fromlocalmedia = false);
 
     std::pair<std::string, int> backupSystem(BusyComponent* ui, std::string device);
-    std::pair<std::string, int> installSystem(BusyComponent* ui, std::string device, std::string architecture);
     std::pair<std::string, int> scrape(BusyComponent* ui);
 
     virtual bool ping();
@@ -258,9 +246,6 @@ public:
     virtual bool scanNewBluetooth(const std::function<void(const std::string)>& func = nullptr); // Obsolete
 
     std::vector<std::string> getAvailableBackupDevices();
-    std::vector<std::string> getAvailableInstallDevices();
-    std::vector<std::string> getAvailableInstallArchitectures();
-    std::vector<std::string> getAvailableOverclocking();
     std::vector<BiosSystem> getBiosInformations(const std::string system = "");
     virtual std::vector<std::string> getVideoModes(const std::string output = "");
 	std::vector<std::string> getCustomRunners();
@@ -392,8 +377,6 @@ public:
 	virtual bool setPlaneMode(bool enable);
 	virtual bool isReadPlaneModeSupported();
 
-	virtual std::vector<Service> getServices();
-	virtual bool enableService(std::string name, bool enable);
 
   	virtual std::vector<Hotkey> getJoysticksHotkeys();
         virtual std::vector<std::string> getJoysticksHotkeysValues();
@@ -411,8 +394,6 @@ public:
       	virtual std::string detectEvKey(const std::string& device_path);
       	virtual void saveKeyboardtopads(Keyboardtopad ktp, const std::vector<KeyboardtopadDevice>& ktp_devices);
 
-	virtual std::vector<std::string> backglassThemes();
-	virtual void restartBackglass();
 
 	virtual bool nfc_is_available();
 	virtual bool nfc_write(const std::string& game);

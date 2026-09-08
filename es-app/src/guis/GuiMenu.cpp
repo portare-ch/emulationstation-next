@@ -43,7 +43,6 @@
 
 #include <LibretroRatio.h>
 #include "guis/GuiUpdate.h"
-#include "guis/GuiInstallStart.h"
 #include "guis/GuiTextEditPopupKeyboard.h"
 #include "guis/GuiBackupStart.h"
 #include "guis/GuiTextEditPopup.h"
@@ -492,106 +491,6 @@ void GuiMenu::openSystemInformations()
 	mWindow->pushGui(new GuiSystemInformation(mWindow));
 }
 
-void GuiMenu::openServicesSettings()
-{
-	auto s = new GuiSettings(mWindow, _("SERVICES").c_str());
-
-	auto services = ApiSystem::getInstance()->getServices();
-	for(unsigned int i = 0; i < services.size(); i++) {
-	  auto service_enabled = std::make_shared<SwitchComponent>(mWindow);
-	  service_enabled->setState(services[i].enabled);
-	  s->addWithLabel(services[i].name, service_enabled);
-	  service_enabled->setOnChangedCallback([services, i, service_enabled]()
-	  {
-	    ApiSystem::getInstance()->enableService(services[i].name, service_enabled->getState());
-	  });
-	}
-
-	mWindow->pushGui(s);
-}
-
-void GuiMenu::openDmdSettings()
-{
-	auto s = new GuiSettings(mWindow, _("DMD").c_str());
-	Window* window = mWindow;
-
-	// server
-	auto services = ApiSystem::getInstance()->getServices();
-	std::string current_server = "";
-	for(unsigned int i = 0; i < services.size(); i++) {
-	  if(services[i].enabled) {
-	    if(services[i].name == "dmd_real")      current_server = "dmd_real";
-	    if(services[i].name == "dmd_simulator") current_server = "dmd_simulator";
-	  }
-	}
-	auto server = std::make_shared< OptionListComponent<std::string> >(window, _("SERVER"), false);
-	server->addRange({ { _("DISABLED"), "" }, { _("DMDSERVER (for real dmd)"), "dmd_real" }, { _("SIMULATOR (for web dmd)"), "dmd_simulator" } }, current_server);
-	s->addWithDescription(_("SERVER"), _("dmd server"), server);
-
-	// format
-	auto format = std::make_shared< OptionListComponent<std::string> >(window, _("FORMAT"), false);
-	std::string current_format = SystemConf::getInstance()->get("dmd.format");
-	format->addRange({ { _("AUTO"), "" }, { "SD", "sd" }, { "HD", "hd" } }, current_format);
-	s->addWithDescription(_("FORMAT"), _("dmd matrix size"), format);
-
-	s->addGroup("ZEDMD");
-
-	// zedmd.brightness
-	auto zedmd_brightness = std::make_shared< OptionListComponent<std::string> >(window, _("BRIGHTNESS"), false);
-	std::string current_zedmd_brightness = SystemConf::getInstance()->get("dmd.zedmd.brightness");
-	zedmd_brightness->addRange({ { _("AUTO"), "" }, { "0", "0" }, { "1", "1" }, { "2", "2" }, { "3", "3" }, { "4", "4" }, { "5", "5" }, { "6", "6" }, { "7", "7" }, { "8", "8" }, { "9", "9" }, { "10", "10" }, { "11", "11" }, { "12", "12" }, { "13", "13" }, { "14", "14" }, { "15", "15" } }, current_zedmd_brightness);
-	s->addWithLabel(_("BRIGHTNESS"), zedmd_brightness);
-
-	s->addSaveFunc([window, server, format, zedmd_brightness, current_server, current_format, current_zedmd_brightness] {
-	  bool needRestart = false;
-	  bool needSave    = false;
-
-	  if(current_format != format->getSelected()) {
-	    SystemConf::getInstance()->set("dmd.format", format->getSelected());
-	    needSave = true;
-	  }
-	  if(current_zedmd_brightness != zedmd_brightness->getSelected()) {
-	    SystemConf::getInstance()->set("dmd.zedmd.brightness", zedmd_brightness->getSelected());
-	    needRestart = true;
-	    needSave = true;
-	  }
-
-	  if(server->getSelected() != current_server) {
-	    needRestart = true;
-	  }
-
-	  if(needSave) {
-	    SystemConf::getInstance()->saveSystemConf();
-	  }
-
-	  if(needRestart) {
-	    bool stopped = false;
-	    bool started = false;
-
-	    // stop the existing server
-	    if(current_server != "") {
-	      ApiSystem::getInstance()->enableService(current_server, false);
-	      stopped = true;
-	    }
-	    // start the new server
-	    if(server->getSelected() != "") {
-	      ApiSystem::getInstance()->enableService(server->getSelected(), true);
-	      started = true;
-	    }
-
-	    if(stopped && !started) {
-	      window->displayNotificationMessage(_U("\uF011  ") + _("DMDSERVER stopped"));
-	    } else if(stopped && started) {
-	      window->displayNotificationMessage(_U("\uF011  ") + _("DMDSERVER restarted"));
-	    } else if(!stopped && started) {
-	      window->displayNotificationMessage(_U("\uF011  ") + _("DMDSERVER started"));
-	    }
-	  }
-	});
-
-	window->pushGui(s);
-}
-
 void GuiMenu::openMultiScreensSettings()
 {
 	auto s = new GuiSettings(mWindow, _("MULTISCREENS").c_str());
@@ -604,33 +503,6 @@ void GuiMenu::openMultiScreensSettings()
 	std::vector<std::string> availableVideo2 = ApiSystem::getInstance()->getAvailableVideoOutputDevices();
 	if (availableVideo2.size())
 	{
-	        if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::BACKGLASS)) {
-			// theme
-			auto themes = ApiSystem::getInstance()->backglassThemes();
-			auto selectedTheme = SystemConf::getInstance()->get("backglass.theme");
-			auto theme = std::make_shared<OptionListComponent<std::string> >(mWindow, _("THEME"), false);
-			
-			std::vector<std::string> themeList;
-			for (auto it = themes.begin(); it != themes.end(); it++)
-			  themeList.push_back(*it);
-			std::sort(themeList.begin(), themeList.end(), [](const std::string& a, const std::string& b) -> bool { return Utils::String::toLower(a).compare(Utils::String::toLower(b)) < 0; });
-
-			theme->add(_("AUTO"), "auto", selectedTheme == "" || selectedTheme == "auto");
-			for (auto themeName : themeList)
-			  theme->add(themeName, themeName, themeName == selectedTheme);
-			
-			s->addWithLabel(_("THEME"), theme);
-			s->addSaveFunc([theme]
-			{
-			  std::string oldTheme = SystemConf::getInstance()->get("backglass.theme");
-			  if (oldTheme != theme->getSelected()) {
-			    SystemConf::getInstance()->set("backglass.theme", theme->getSelected());
-			    SystemConf::getInstance()->saveSystemConf();
-			    ApiSystem::getInstance()->restartBackglass();
-			  }
-			});
-		}
-
 		auto optionsVideo2 = std::make_shared<OptionListComponent<std::string> >(mWindow, _("VIDEO OUTPUT"), false);
 		std::string currentDevice2 = SystemConf::getInstance()->get("global.videooutput2");
 		std::string currentDevice = SystemConf::getInstance()->get("global.videooutput");
@@ -2435,67 +2307,6 @@ void GuiMenu::openSystemSettings()
 	});
 #endif
 
-	// Overclock choice
-	if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::OVERCLOCK))
-	{
-		auto overclock_choice = std::make_shared<OptionListComponent<std::string>>(window, _("OVERCLOCK"), false);
-
-		std::string currentOverclock = Settings::getInstance()->getString("Overclock");
-		if (currentOverclock == "")
-			currentOverclock = "none";
-
-		std::vector<std::string> availableOverclocking = ApiSystem::getInstance()->getAvailableOverclocking();
-
-		// Overclocking device
-		bool isOneSet = false;
-		for (auto it = availableOverclocking.begin(); it != availableOverclocking.end(); it++)
-		{
-			std::vector<std::string> tokens = Utils::String::split(*it, ' ');
-			if (tokens.size() >= 2)
-			{
-				// concatenat the ending words
-				std::string vname;
-				for (unsigned int i = 1; i < tokens.size(); i++)
-				{
-					if (i > 1) vname += " ";
-					vname += tokens.at(i);
-				}
-				bool isSet = currentOverclock == std::string(tokens.at(0));
-				if (isSet)
-					isOneSet = true;
-
-				if (vname == "NONE" || vname == "none")
-					vname = _("NONE");
-
-				overclock_choice->add(vname, tokens.at(0), isSet);
-			}
-		}
-
-		if (isOneSet == false)
-		{
-			if (currentOverclock == "none")
-				overclock_choice->add(_("NONE"), currentOverclock, true);
-			else
-				overclock_choice->add(currentOverclock, currentOverclock, true);
-		}
-
-		// overclocking
-		s->addWithLabel(_("OVERCLOCK"), overclock_choice);
-
-		s->addSaveFunc([overclock_choice, window, s]
-		{
-			if (overclock_choice->changed() && Settings::getInstance()->setString("Overclock", overclock_choice->getSelected()))
-			{
-				ApiSystem::getInstance()->setOverclock(overclock_choice->getSelected());
-				s->setVariable("reboot", true);
-			}
-		});
-	}
-
-#ifdef BATOCERA
-	s->addEntry(_("DMD"), true, [this] { openDmdSettings(); });
-#endif
-
 #ifdef BATOCERA
         s->addEntry(_("MULTISCREENS"), true, [this] { openMultiScreensSettings(); });
 #endif
@@ -2674,9 +2485,6 @@ void GuiMenu::openSystemSettings()
 	if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::BACKUP))
 		s->addEntry(_("BACKUP USER DATA"), true, [this] { mWindow->pushGui(new GuiBackupStart(mWindow)); });
 
-	if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::INSTALL))
-		s->addEntry(_("INSTALL ON A NEW DISK"), true, [this] { mWindow->pushGui(new GuiInstallStart(mWindow)); });
-
 	s->addEntry(_("EJECT AN EXTRA DISK"), true, [this] { openUnmountDriveSettings(); });
 
     auto diskFormat = std::make_shared<OptionListComponent<std::string>>(window, _("EXTRA DRIVE FILESYSTEM TYPE"), false);
@@ -2707,12 +2515,6 @@ void GuiMenu::openSystemSettings()
     });
 	
 	s->addGroup(_("ADVANCED"));
-
-	if(ApiSystem::getInstance()->isScriptingSupported(ApiSystem::SERVICES)) {
-	  // Services
-	  if (isFullUI)
-	    s->addEntry(_("SERVICES"), true, [this] { openServicesSettings(); });
-	}
 
 	// Security
 	s->addEntry(_("SECURITY"), true, [this, s] 
@@ -2763,9 +2565,6 @@ void GuiMenu::openSystemSettings()
 	if (isFullUI)
 	{
 		s->addGroup(_("ADVANCED"));
-
-		if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::SERVICES) && ApiSystem::getInstance()->getServices().size())
-			s->addEntry(_("SERVICES"), true, [this] { openServicesSettings(); });
 	}
 #endif
 	
