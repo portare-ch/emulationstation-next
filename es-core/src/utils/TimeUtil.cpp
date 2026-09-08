@@ -547,18 +547,18 @@ namespace Utils
 			if (dur.getDays() > 365)
 			{
 				unsigned int years = dur.getDays() / 365;
-				snprintf(buf, 256, ngettext("%d year ago", "%d years ago", years), years);
+				snprintf(buf, 256, es_ngettext("%d year ago", "%d years ago", years), years);
 			}
 			else if (dur.getDays() > 0)
-				snprintf(buf, 256, ngettext("%d day ago", "%d days ago", dur.getDays()), dur.getDays());
+				snprintf(buf, 256, es_ngettext("%d day ago", "%d days ago", dur.getDays()), dur.getDays());
 			else if (dur.getDays() > 0)
-				snprintf(buf, 256, ngettext("%d day ago", "%d days ago", dur.getDays()), dur.getDays());
+				snprintf(buf, 256, es_ngettext("%d day ago", "%d days ago", dur.getDays()), dur.getDays());
 			else if (dur.getHours() > 0)
-				snprintf(buf, 256, ngettext("%d hour ago", "%d hours ago", dur.getHours()), dur.getHours());
+				snprintf(buf, 256, es_ngettext("%d hour ago", "%d hours ago", dur.getHours()), dur.getHours());
 			else if (dur.getMinutes() > 0)
-				snprintf(buf, 256, ngettext("%d minute ago", "%d minutes ago", dur.getMinutes()), dur.getMinutes());
+				snprintf(buf, 256, es_ngettext("%d minute ago", "%d minutes ago", dur.getMinutes()), dur.getMinutes());
 			else
-				snprintf(buf, 256, ngettext("%d second ago", "%d seconds ago", dur.getSeconds()), dur.getSeconds());
+				snprintf(buf, 256, es_ngettext("%d second ago", "%d seconds ago", dur.getSeconds()), dur.getSeconds());
 
 			return std::string(buf);
 		}

@@ -8,36 +8,36 @@
 #include "Log.h"
 #include "Window.h"
 
-#define fake_gettext_north pgettext("joystick", "NORTH")
-#define fake_gettext_south pgettext("joystick", "SOUTH")
-#define fake_gettext_east  pgettext("joystick", "EAST")
-#define fake_gettext_west  pgettext("joystick", "WEST")
+#define fake_gettext_north es_pgettext("joystick", "NORTH")
+#define fake_gettext_south es_pgettext("joystick", "SOUTH")
+#define fake_gettext_east  es_pgettext("joystick", "EAST")
+#define fake_gettext_west  es_pgettext("joystick", "WEST")
 
-#define fake_gettext_start  pgettext("joystick", "START")
-#define fake_gettext_select pgettext("joystick", "SELECT")
+#define fake_gettext_start  es_pgettext("joystick", "START")
+#define fake_gettext_select es_pgettext("joystick", "SELECT")
 
-#define fake_gettext_up    pgettext("joystick", "D-PAD UP")
-#define fake_gettext_down  pgettext("joystick", "D-PAD DOWN")
-#define fake_gettext_left  pgettext("joystick", "D-PAD LEFT")
-#define fake_gettext_right pgettext("joystick", "D-PAD RIGHT")
+#define fake_gettext_up    es_pgettext("joystick", "D-PAD UP")
+#define fake_gettext_down  es_pgettext("joystick", "D-PAD DOWN")
+#define fake_gettext_left  es_pgettext("joystick", "D-PAD LEFT")
+#define fake_gettext_right es_pgettext("joystick", "D-PAD RIGHT")
 
-#define fake_gettext_left_a_up     pgettext("joystick", "LEFT ANALOG UP")
-#define fake_gettext_left_a_down   pgettext("joystick", "LEFT ANALOG DOWN")
-#define fake_gettext_left_a_left   pgettext("joystick", "LEFT ANALOG LEFT")
-#define fake_gettext_left_a_right  pgettext("joystick", "LEFT ANALOG RIGHT")
-#define fake_gettext_right_a_up    pgettext("joystick", "RIGHT ANALOG UP")
-#define fake_gettext_right_a_down  pgettext("joystick", "RIGHT ANALOG DOWN")
-#define fake_gettext_right_a_left  pgettext("joystick", "RIGHT ANALOG LEFT")
-#define fake_gettext_right_a_right pgettext("joystick", "RIGHT ANALOG RIGHT")
+#define fake_gettext_left_a_up     es_pgettext("joystick", "LEFT ANALOG UP")
+#define fake_gettext_left_a_down   es_pgettext("joystick", "LEFT ANALOG DOWN")
+#define fake_gettext_left_a_left   es_pgettext("joystick", "LEFT ANALOG LEFT")
+#define fake_gettext_left_a_right  es_pgettext("joystick", "LEFT ANALOG RIGHT")
+#define fake_gettext_right_a_up    es_pgettext("joystick", "RIGHT ANALOG UP")
+#define fake_gettext_right_a_down  es_pgettext("joystick", "RIGHT ANALOG DOWN")
+#define fake_gettext_right_a_left  es_pgettext("joystick", "RIGHT ANALOG LEFT")
+#define fake_gettext_right_a_right es_pgettext("joystick", "RIGHT ANALOG RIGHT")
 
-#define fake_gettext_pageup   pgettext("joystick", "LEFT SHOULDER")
-#define fake_gettext_pagedown pgettext("joystick", "RIGHT SHOULDER")
-#define fake_gettext_l2       pgettext("joystick", "LEFT TRIGGER")
-#define fake_gettext_r2       pgettext("joystick", "RIGHT TRIGGER")
-#define fake_gettext_l3       pgettext("joystick", "LEFT STICK PRESS")
-#define fake_gettext_r3       pgettext("joystick", "RIGHT STICK PRESS")
+#define fake_gettext_pageup   es_pgettext("joystick", "LEFT SHOULDER")
+#define fake_gettext_pagedown es_pgettext("joystick", "RIGHT SHOULDER")
+#define fake_gettext_l2       es_pgettext("joystick", "LEFT TRIGGER")
+#define fake_gettext_r2       es_pgettext("joystick", "RIGHT TRIGGER")
+#define fake_gettext_l3       es_pgettext("joystick", "LEFT STICK PRESS")
+#define fake_gettext_r3       es_pgettext("joystick", "RIGHT STICK PRESS")
 
-#define fake_gettext_hotkey        pgettext("joystick", "HOTKEY")
+#define fake_gettext_hotkey        es_pgettext("joystick", "HOTKEY")
 
 //MasterVolUp and MasterVolDown are also hooked up, but do not appear on this screen.
 //If you want, you can manually add them to es_input.cfg.
@@ -160,7 +160,7 @@ GuiInputConfig::GuiInputConfig(Window* window, InputConfig* target, bool reconfi
 		spacer->setSize(16, 0);
 		row.addElement(spacer, false);
 
-		auto text = std::make_shared<TextComponent>(mWindow, pgettext("joystick", Utils::String::toUpper(GUI_INPUT_CONFIG_LIST[i].dispName).c_str()), theme->Text.font, theme->Text.color);
+		auto text = std::make_shared<TextComponent>(mWindow, es_pgettext("joystick", Utils::String::toUpper(GUI_INPUT_CONFIG_LIST[i].dispName).c_str()), theme->Text.font, theme->Text.color);
 		row.addElement(text, true);
 
 		auto mapping = std::make_shared<TextComponent>(mWindow, _("-NOT DEFINED-"), theme->Text.font, theme->TextSmall.color, ALIGN_RIGHT); 
@@ -344,7 +344,7 @@ void GuiInputConfig::update(int deltaTime)
 				// crossed the second boundary, update text
 				const auto& text = mMappings.at(mHeldInputId);
 				char strbuf[256];
-				snprintf(strbuf, 256, ngettext("HOLD FOR %iS TO SKIP", "HOLD FOR %iS TO SKIP", HOLD_TO_SKIP_MS/1000 - curSec), HOLD_TO_SKIP_MS/1000 - curSec); 
+				snprintf(strbuf, 256, es_ngettext("HOLD FOR %iS TO SKIP", "HOLD FOR %iS TO SKIP", HOLD_TO_SKIP_MS/1000 - curSec), HOLD_TO_SKIP_MS/1000 - curSec); 
 				text->setText(strbuf);
 				text->setColor(ThemeData::getMenuTheme()->Text.color);
 			}

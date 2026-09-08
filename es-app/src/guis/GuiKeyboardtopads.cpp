@@ -184,7 +184,7 @@ void GuiKeyboardtopads::loadPlayerPage(int n, const std::string& device_path)
 		spacer->setSize(16, 0);
 		row.addElement(spacer, false);
 
-		auto text = std::make_shared<TextComponent>(mWindow, pgettext("joystick", GUI_INPUT_CONFIG_LIST[i].dispName.c_str()), theme->Text.font, theme->Text.color);
+		auto text = std::make_shared<TextComponent>(mWindow, es_pgettext("joystick", GUI_INPUT_CONFIG_LIST[i].dispName.c_str()), theme->Text.font, theme->Text.color);
 		row.addElement(text, true);
 
 		auto mapping = std::make_shared<TextComponent>(mWindow, getNameForInput(device, GUI_INPUT_CONFIG_LIST[i].code), theme->Text.font, theme->Text.color);
