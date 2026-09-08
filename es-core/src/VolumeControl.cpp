@@ -1,14 +1,12 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026-present PortareOS (https://github.com/portare-ch)
+
 #include "VolumeControl.h"
 
 #include "math/Misc.h"
 #include "Log.h"
 #include "Settings.h"
 
-#ifdef WIN32
-#include <mmdeviceapi.h>
-#endif
-
-#if defined(__linux__)
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -349,18 +347,9 @@ const pw_node_events PipeWireControl::sNodeEvents = {
 
 static PipeWireControl PipeWire;
 
-#endif
-
 std::weak_ptr<VolumeControl> VolumeControl::sInstance;
 
-
-VolumeControl::VolumeControl()
-	: internalVolume(0)
-#if defined (__APPLE__)
-	#error TODO: Not implemented for MacOS yet!!!
-#elif defined(WIN32) || defined(_WIN32)
-	, mixerHandle(nullptr), endpointVolume(nullptr)
-#endif
+VolumeControl::VolumeControl() : internalVolume(0)
 {
 	init();
 }
@@ -369,237 +358,47 @@ VolumeControl::~VolumeControl()
 {
 	if (PipeWire.isReady())
 		PipeWire.exit();
-
-	deinit();
 }
 
 std::shared_ptr<VolumeControl> & VolumeControl::getInstance()
 {
-	//check if an VolumeControl instance is already created, if not create one
 	static std::shared_ptr<VolumeControl> sharedInstance = sInstance.lock();
-	if (sharedInstance == nullptr) {
+	if (sharedInstance == nullptr)
+	{
 		sharedInstance.reset(new VolumeControl);
 		sInstance = sharedInstance;
 	}
+
 	return sharedInstance;
 }
 
 void VolumeControl::init()
 {
-	//initialize audio mixer interface
-#if defined (__APPLE__)
-	#error TODO: Not implemented for MacOS yet!!!
-#elif defined(__linux__)
-	// The volume the user last chose, which pipewire has no memory of.
+	// The volume the user last chose, which pipewire has no memory of. Applied
+	// locally rather than pushed at the sink, so starting up does not overwrite
+	// a volume something else has since set.
 	std::string volume = SystemConf::getInstance()->get("audio.volume");
 	PipeWire.setVolume(volume.empty() ? 100 : Utils::String::toInteger(volume), false);
-	return;
-#elif defined(WIN32) || defined(_WIN32)
-	//get windows version information
-	OSVERSIONINFOEXA osVer = {sizeof(OSVERSIONINFO)};
-	::GetVersionExA(reinterpret_cast<LPOSVERSIONINFOA>(&osVer));
-	//check windows version
-	if(osVer.dwMajorVersion < 6)
-	{
-		//Windows older than Vista. use mixer API. open default mixer
-		if (mixerHandle == nullptr)
-		{
-			if (mixerOpen(&mixerHandle, 0, NULL, 0, 0) == MMSYSERR_NOERROR)
-			{
-				//retrieve info on the volume slider control for the "Speaker Out" line
-				MIXERLINECONTROLS mixerLineControls;
-				mixerLineControls.cbStruct = sizeof(MIXERLINECONTROLS);
-				mixerLineControls.dwLineID = 0xFFFF0000; //Id of "Speaker Out" line
-				mixerLineControls.cControls = 1;
-				//mixerLineControls.dwControlID = 0x00000000; //Id of "Speaker Out" line's volume slider
-				mixerLineControls.dwControlType = MIXERCONTROL_CONTROLTYPE_VOLUME; //Get volume control
-				mixerLineControls.pamxctrl = &mixerControl;
-				mixerLineControls.cbmxctrl = sizeof(MIXERCONTROL);
-				if (mixerGetLineControls((HMIXEROBJ)mixerHandle, &mixerLineControls, MIXER_GETLINECONTROLSF_ONEBYTYPE) != MMSYSERR_NOERROR)
-				{
-					LOG(LogError) << "VolumeControl::getVolume() - Failed to get mixer volume control!";
-					mixerClose(mixerHandle);
-					mixerHandle = nullptr;
-				}
-			}
-			else
-			{
-				LOG(LogError) << "VolumeControl::init() - Failed to open mixer!";
-			}
-		}
-	}
-	else 
-	{
-		//Windows Vista or above. use EndpointVolume API. get device enumerator
-		if (endpointVolume == nullptr)
-		{
-			CoInitialize(nullptr);
-			IMMDeviceEnumerator * deviceEnumerator = nullptr;
-			CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_INPROC_SERVER, __uuidof(IMMDeviceEnumerator), (LPVOID *)&deviceEnumerator);
-			if (deviceEnumerator != nullptr)
-			{
-				//get default endpoint
-				IMMDevice * defaultDevice = nullptr;
-				deviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &defaultDevice);
-				if (defaultDevice != nullptr)
-				{
-					//retrieve endpoint volume
-					defaultDevice->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_INPROC_SERVER, nullptr, (LPVOID *)&endpointVolume);
-					if (endpointVolume == nullptr)
-					{
-						LOG(LogError) << "VolumeControl::init() - Failed to get default audio endpoint volume!";
-					}
-					//release default device. we don't need it anymore
-					defaultDevice->Release();
-				}
-				else
-				{
-					LOG(LogError) << "VolumeControl::init() - Failed to get default audio endpoint!";
-				}
-				//release device enumerator. we don't need it anymore
-				deviceEnumerator->Release();
-			}
-			else
-			{
-				LOG(LogError) << "VolumeControl::init() - Failed to get audio endpoint enumerator!";
-				CoUninitialize();
-			}
-		}
-	}
-#endif
 }
 
 void VolumeControl::deinit()
 {
-	//deinitialize audio mixer interface
-#if defined (__APPLE__)
-	#error TODO: Not implemented for MacOS yet!!!
-#elif defined(__linux__)
-	return;
-#elif defined(WIN32) || defined(_WIN32)
-	if (mixerHandle != nullptr) {
-		mixerClose(mixerHandle);
-		mixerHandle = nullptr;
-	}
-	else if (endpointVolume != nullptr) {
-		endpointVolume->Release();
-		endpointVolume = nullptr;
-		CoUninitialize();
-	}
-#endif
 }
 
 int VolumeControl::getVolume() const
 {
-	int volume = 0;
-
-#if defined (__APPLE__)
-	#error TODO: Not implemented for MacOS yet!!!
-#elif defined(__linux__)
-	return PipeWire.getVolume();
-#elif defined(WIN32) || defined(_WIN32)
-	if (mixerHandle != nullptr)
-	{
-		//Windows older than Vista. use mixer API. get volume from line control
-		MIXERCONTROLDETAILS_UNSIGNED value;
-		MIXERCONTROLDETAILS mixerControlDetails;
-		mixerControlDetails.cbStruct = sizeof(MIXERCONTROLDETAILS);
-		mixerControlDetails.dwControlID = mixerControl.dwControlID;
-		mixerControlDetails.cChannels = 1; //always 1 for a MIXERCONTROL_CONTROLF_UNIFORM control
-		mixerControlDetails.cMultipleItems = 0; //always 0 except for a MIXERCONTROL_CONTROLF_MULTIPLE control
-		mixerControlDetails.paDetails = &value;
-		mixerControlDetails.cbDetails = sizeof(MIXERCONTROLDETAILS_UNSIGNED);
-
-		if (mixerGetControlDetails((HMIXEROBJ)mixerHandle, &mixerControlDetails, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR) 
-			volume = (int)Math::round((value.dwValue * 100) / 65535.0f);
-	}
-	else if (endpointVolume != nullptr)
-	{
-		// Windows Vista or above. use EndpointVolume API
-		float floatVolume = 0.0f; //0-1
-
-		BOOL mute = FALSE;
-		if (endpointVolume->GetMute(&mute) == S_OK)
-		{
-			if (mute)
-				return 0;
-		}
-
-		if (endpointVolume->GetMasterVolumeLevelScalar(&floatVolume) == S_OK)
-			volume = (int)Math::round(floatVolume * 100.0f);
-	}
-#endif
-
-	// clamp to 0-100 range
-	if (volume < 0)
-		volume = 0;
-
-	if (volume > 100)
-		volume = 100;
-
-	return volume;
+	return Math::clamp(PipeWire.getVolume(), 0, 100);
 }
 
 void VolumeControl::setVolume(int volume)
 {
-	//clamp to 0-100 range
-	if (volume < 0)
-	{
-		volume = 0;
-	}
-	if (volume > 100)
-	{
-		volume = 100;
-	}
-	//store values in internal variables
-	internalVolume = volume;
-#if defined (__APPLE__)
-	#error TODO: Not implemented for MacOS yet!!!
-#elif defined(__linux__)
-	if (PipeWire.isReady())
-		PipeWire.setVolume(volume);
+	internalVolume = Math::clamp(volume, 0, 100);
 
-	return;
-#elif defined(WIN32) || defined(_WIN32)
-	if (mixerHandle != nullptr)
-	{
-		//Windows older than Vista. use mixer API. get volume from line control
-		MIXERCONTROLDETAILS_UNSIGNED value;
-		value.dwValue = (volume * 65535) / 100;
-		MIXERCONTROLDETAILS mixerControlDetails;
-		mixerControlDetails.cbStruct = sizeof(MIXERCONTROLDETAILS);
-		mixerControlDetails.dwControlID = mixerControl.dwControlID;
-		mixerControlDetails.cChannels = 1; //always 1 for a MIXERCONTROL_CONTROLF_UNIFORM control
-		mixerControlDetails.cMultipleItems = 0; //always 0 except for a MIXERCONTROL_CONTROLF_MULTIPLE control
-		mixerControlDetails.paDetails = &value;
-		mixerControlDetails.cbDetails = sizeof(MIXERCONTROLDETAILS_UNSIGNED);
-		if (mixerSetControlDetails((HMIXEROBJ)mixerHandle, &mixerControlDetails, MIXER_SETCONTROLDETAILSF_VALUE) != MMSYSERR_NOERROR)
-		{
-			LOG(LogError) << "VolumeControl::setVolume() - Failed to set mixer volume!";
-		}
-	}
-	else if (endpointVolume != nullptr)
-	{
-		//Windows Vista or above. use EndpointVolume API
-		float floatVolume = 0.0f; //0-1
-		if (volume > 0) {
-			floatVolume = (float)volume / 100.0f;
-		}
-		if (endpointVolume->SetMasterVolumeLevelScalar(floatVolume, nullptr) != S_OK)
-		{
-			LOG(LogError) << "VolumeControl::setVolume() - Failed to set master volume!";
-		}
-	}
-#endif
+	if (PipeWire.isReady())
+		PipeWire.setVolume(internalVolume);
 }
 
 bool VolumeControl::isAvailable()
 {
-#if defined (__APPLE__)
-	return false;
-#elif defined(__linux__)
 	return PipeWire.isReady();
-#elif defined(WIN32) || defined(_WIN32)
-	return mixerHandle != nullptr || endpointVolume != nullptr;
-#endif
 }
