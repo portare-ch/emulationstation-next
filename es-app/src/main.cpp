@@ -572,7 +572,7 @@ int main(int argc, char* argv[])
 	if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::PDFEXTRACTION))
 		TextureData::PdfHandler = ApiSystem::getInstance();
 	
-	threadPool->waitAll(); // Wait for what's necessary for loadSystemConfigFile
+	threadPool->wait(); // Wait for what's necessary for loadSystemConfigFile
 
 	const char* errorMsg = NULL;
 	if (!loadSystemConfigFile(splashScreen && splashScreenProgress ? &window : nullptr, &errorMsg))
