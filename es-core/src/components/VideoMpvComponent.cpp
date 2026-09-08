@@ -1,12 +1,14 @@
-#include "components/VideoVlcComponent.h"
+#include "components/VideoMpvComponent.h"
 
 #include "renderers/Renderer.h"
 #include "resources/TextureResource.h"
 #include "utils/StringUtil.h"
 #include "PowerSaver.h"
 #include "Settings.h"
-#include <vlc/vlc.h>
-#include <vlc/libvlc_version.h>
+#include <mpv/client.h>
+#include <mpv/render.h>
+#include <cstring>
+#include <cstdint>
 #include <SDL_mutex.h>
 #include <cmath>
 #include "SystemConf.h"
@@ -22,49 +24,16 @@
 
 #define MATHPI          3.141592653589793238462643383279502884L
 
-libvlc_instance_t* VideoVlcComponent::mVLC = NULL;
-
-// VLC prepares to render a video frame.
-static void *lock(void *data, void **p_pixels) 
-{
-	struct VideoContext *c = (struct VideoContext *)data;
-
-	int frame = (c->surfaceId ^ 1);
-	
-	c->mutexes[frame].lock();
-	c->hasFrame[frame] = false;
-	*p_pixels = c->surfaces[frame];
-	return NULL; // Picture identifier, not needed here.
-}
-
-// VLC just rendered a video frame.
-static void unlock(void *data, void* /*id*/, void *const* /*p_pixels*/) 
-{
-	struct VideoContext *c = (struct VideoContext *)data;
-
-	int frame = (c->surfaceId ^ 1);	
-
-	c->surfaceId = frame;
-	c->hasFrame[frame] = true;
-	c->mutexes[frame].unlock();
-}
-
-// VLC wants to display a video frame.
-static void display(void* data, void* id)
-{
-	if (data == NULL)
-		return;
-
-	struct VideoContext *c = (struct VideoContext *)data;
-	if (c->component != nullptr && !c->component->isPlaying() && c->component->isWaitingForVideoToStart())
-		c->component->onVideoStarted();
-}
-
-VideoVlcComponent::VideoVlcComponent(Window* window) : VideoComponent(window), 
-	mMediaPlayer(nullptr), mMedia(nullptr),
+// mpv hands a frame over when asked rather than pushing one from a thread of its
+// own, so readFrame() does the work from update() and the surface mutexes are
+// never contended.
+VideoMpvComponent::VideoMpvComponent(Window* window) : VideoComponent(window), 
+	mMpv(nullptr), mMpvRender(nullptr),
 	mTopLeftCrop(0.0f, 0.0f), mBottomRightCrop(1.0f, 1.0f), mContext(nullptr)
 {
 	mIsParsing = false;
+	mReachedEnd = false;
+	mHasAudioTrack = false;
 	mSaturation = 1.0f;
 	mElapsed = 0;
 	mColorShift = 0xFFFFFFFF;
@@ -75,32 +44,28 @@ VideoVlcComponent::VideoVlcComponent(Window* window) : VideoComponent(window),
 
 	// Get an empty texture for rendering the video
 	mTexture = nullptr;// TextureResource::get("");
-	mEffect = VideoVlcFlags::VideoVlcEffect::BUMP;
-
-	// Make sure VLC has been initialised
-	init();
+	mEffect = VideoMpvFlags::VideoMpvEffect::BUMP;
 }
 
-static void mediaplayer_release_async(VideoContext* ctx, libvlc_media_player_t* p_mi)
+// mpv_terminate_destroy waits for its threads, so it is not done on the UI thread.
+static void mpv_release_async(VideoContext* ctx, mpv_handle* mpv)
 {
-	if (p_mi == nullptr)
-		return;
+	if (ctx)
+		ctx->component = nullptr;
 
-	ctx->component = nullptr;
-
-	std::thread([p_mi, ctx]()
-		{			
-			libvlc_media_player_release(p_mi);
+	std::thread([mpv, ctx]()
+		{
+			if (mpv) mpv_terminate_destroy(mpv);
 			if (ctx) delete ctx;
 		}).detach();
 }
 
-VideoVlcComponent::~VideoVlcComponent()
+VideoMpvComponent::~VideoMpvComponent()
 {
 	stopVideo();
 }
 
-Vector2f VideoVlcComponent::getSize() const
+Vector2f VideoMpvComponent::getSize() const
 {
 	if (mTargetIsMax && mPadding != Vector4f::Zero())
 	{
@@ -115,7 +80,7 @@ Vector2f VideoVlcComponent::getSize() const
 	return GuiComponent::getSize() * (mBottomRightCrop - mTopLeftCrop);
 }
 
-void VideoVlcComponent::setResize(float width, float height)
+void VideoMpvComponent::setResize(float width, float height)
 {
 	if (mSize.x() != 0 && mSize.y() != 0 && !mTargetIsMax && !mTargetIsMin && mTargetSize.x() == width && mTargetSize.y() == height)
 		return;
@@ -128,7 +93,7 @@ void VideoVlcComponent::setResize(float width, float height)
 	resize();
 }
 
-void VideoVlcComponent::setMaxSize(float width, float height)
+void VideoMpvComponent::setMaxSize(float width, float height)
 {
 	if (mSize.x() != 0 && mSize.y() != 0 && mTargetIsMax && !mTargetIsMin && mTargetSize.x() == width && mTargetSize.y() == height)
 		return;
@@ -141,7 +106,7 @@ void VideoVlcComponent::setMaxSize(float width, float height)
 	resize();
 }
 
-void VideoVlcComponent::setMinSize(float width, float height)
+void VideoMpvComponent::setMinSize(float width, float height)
 {
 	if (mSize.x() != 0 && mSize.y() != 0 && mTargetIsMin && !mTargetIsMax && mTargetSize.x() == width && mTargetSize.y() == height)
 		return;
@@ -154,13 +119,13 @@ void VideoVlcComponent::setMinSize(float width, float height)
 	resize();
 }
 
-void VideoVlcComponent::onVideoStarted()
+void VideoMpvComponent::onVideoStarted()
 {
 	VideoComponent::onVideoStarted();
 	resize();
 }
 
-void VideoVlcComponent::crop(float left, float top, float right, float bot)
+void VideoMpvComponent::crop(float left, float top, float right, float bot)
 {
 	mTopLeftCrop.x() = Math::clamp(left, 0.0f, 1.0f);
 	mTopLeftCrop.y() = Math::clamp(top, 0.0f, 1.0f);
@@ -168,7 +133,7 @@ void VideoVlcComponent::crop(float left, float top, float right, float bot)
 	mBottomRightCrop.y() = 1.0f - Math::clamp(bot, 0.0f, 1.0f);
 }
 
-void VideoVlcComponent::resize()
+void VideoMpvComponent::resize()
 {
 	if (!mTexture)
 		return;
@@ -260,25 +225,25 @@ void VideoVlcComponent::resize()
 	onSizeChanged();
 }
 
-void VideoVlcComponent::onSizeChanged()
+void VideoMpvComponent::onSizeChanged()
 {
 	GuiComponent::onSizeChanged();
 	updateVertices();
 }
 
-void VideoVlcComponent::onPaddingChanged()
+void VideoMpvComponent::onPaddingChanged()
 {
 	GuiComponent::onPaddingChanged();
 	resize();
 	updateVertices();
 }
 
-void VideoVlcComponent::setColorShift(unsigned int color)
+void VideoMpvComponent::setColorShift(unsigned int color)
 {
 	mColorShift = color;
 }
 
-void VideoVlcComponent::updateVertices()
+void VideoMpvComponent::updateVertices()
 {
 	if (!mTexture)
 		return;
@@ -368,7 +333,7 @@ void VideoVlcComponent::updateVertices()
 	updateRoundCorners();	
 }
 
-void VideoVlcComponent::updateColors()
+void VideoMpvComponent::updateColors()
 {
 	float t = mFadeIn;
 	if (mFadeIn < 1.0)
@@ -392,7 +357,7 @@ void VideoVlcComponent::updateColors()
 	mVertices[3].col = color;
 }
 
-void VideoVlcComponent::setRoundCorners(float value)
+void VideoMpvComponent::setRoundCorners(float value)
 {
 	if (mRoundCorners == value)
 		return;
@@ -401,7 +366,7 @@ void VideoVlcComponent::setRoundCorners(float value)
 	updateRoundCorners();
 }
 
-void VideoVlcComponent::updateRoundCorners()
+void VideoMpvComponent::updateRoundCorners()
 {
 	if (mRoundCorners <= 0 || Renderer::shaderSupportsCornerSize(mCustomShader.path))
 	{
@@ -428,7 +393,7 @@ void VideoVlcComponent::updateRoundCorners()
 	mRoundCornerStencil = Renderer::createRoundRect(x, y, size_x, size_y, radius);
 }
 
-void VideoVlcComponent::render(const Transform4x4f& parentTrans)
+void VideoMpvComponent::render(const Transform4x4f& parentTrans)
 {
 	if (!isShowing() || !isVisible())
 		return;
@@ -505,7 +470,7 @@ void VideoVlcComponent::render(const Transform4x4f& parentTrans)
 
 	bool isDefaultEffectDisabled = hasStoryBoard() && currentStoryBoardHasProperty("scale") && isStoryBoardRunning();
 
-	/*if (mEffect == VideoVlcFlags::VideoVlcEffect::SLIDERIGHT && mFadeIn > 0.0 && mFadeIn < 1.0 && mConfig.startDelay > 0 && !isDefaultEffectDisabled)
+	/*if (mEffect == VideoMpvFlags::VideoMpvEffect::SLIDERIGHT && mFadeIn > 0.0 && mFadeIn < 1.0 && mConfig.startDelay > 0 && !isDefaultEffectDisabled)
 	{
 		float t = 1.0 - mFadeIn;
 		t -= 1;
@@ -517,7 +482,7 @@ void VideoVlcComponent::render(const Transform4x4f& parentTrans)
 		vertices[3] = { { mSize.x(), mSize.y() }, { t + 1.0f, 1.0f }, color };
 	}
 	else*/
-	if (mEffect == VideoVlcFlags::VideoVlcEffect::SIZE && mFadeIn > 0.0 && mFadeIn < 1.0 && mConfig.startDelay > 0 && !isDefaultEffectDisabled)
+	if (mEffect == VideoMpvFlags::VideoMpvEffect::SIZE && mFadeIn > 0.0 && mFadeIn < 1.0 && mConfig.startDelay > 0 && !isDefaultEffectDisabled)
 	{		
 		float bump = Math::easeOutCubic(mFadeIn);
 
@@ -528,7 +493,7 @@ void VideoVlcComponent::render(const Transform4x4f& parentTrans)
 		mScale = scale;
 		mTransformDirty = true;
 	}
-	else if (mEffect == VideoVlcFlags::VideoVlcEffect::BUMP && mFadeIn > 0.0 && mFadeIn < 1.0 && mConfig.startDelay > 0 && !isDefaultEffectDisabled)
+	else if (mEffect == VideoMpvFlags::VideoMpvEffect::BUMP && mFadeIn > 0.0 && mFadeIn < 1.0 && mConfig.startDelay > 0 && !isDefaultEffectDisabled)
 	{
 		float bump = sin((MATHPI / 2.0) * mFadeIn) + sin(MATHPI * mFadeIn) / 2.0;
 
@@ -574,7 +539,7 @@ void VideoVlcComponent::render(const Transform4x4f& parentTrans)
 	}
 }
 
-VideoContext* VideoVlcComponent::createContext()
+VideoContext* VideoMpvComponent::createContext()
 {
 	// Create an RGBA surface to render the video into
 	VideoContext* ctx = new VideoContext();
@@ -589,97 +554,80 @@ VideoContext* VideoVlcComponent::createContext()
 	return ctx;
 }
 
-#if WIN32
-#include <Windows.h>
-#pragma comment(lib, "Version.lib")
-
-// If Vlc2 dlls have been upgraded with vlc3 dlls, libqt4_plugin.dll is not compatible, so check if libvlc is 3.x then delete obsolete libqt4_plugin.dll
-void _checkUpgradedVlcVersion()
+// Opens an mpv handle configured for rendering into our own buffer: no window,
+// no terminal, no user config, and software decoding because the sw render API
+// needs frames the CPU can read.
+bool VideoMpvComponent::openHandle()
 {
-	char str[1024] = { 0 };
-	if (GetModuleFileNameA(NULL, str, 1024) == 0)
-		return;
+	mMpv = mpv_create();
+	if (mMpv == nullptr)
+		return false;
 
-	auto dir = Utils::FileSystem::getParent(str);
-	auto path = Utils::FileSystem::getPreferredPath(Utils::FileSystem::combine(dir, "libvlc.dll"));
-	if (Utils::FileSystem::exists(path))
+	mpv_set_option_string(mMpv, "config", "no");
+	mpv_set_option_string(mMpv, "terminal", "no");
+	mpv_set_option_string(mMpv, "msg-level", "all=no");
+	mpv_set_option_string(mMpv, "input-default-bindings", "no");
+	mpv_set_option_string(mMpv, "input-vo-keyboard", "no");
+	mpv_set_option_string(mMpv, "osc", "no");
+	mpv_set_option_string(mMpv, "osd-level", "0");
+	mpv_set_option_string(mMpv, "vo", "libmpv");
+	mpv_set_option_string(mMpv, "hwdec", "no");
+	mpv_set_option_string(mMpv, "audio-display", "no");
+	// We count loops ourselves, and keep-open leaves the file loaded at the end
+	// so eof-reached can be read rather than the handle tearing itself down.
+	mpv_set_option_string(mMpv, "loop-file", "no");
+	mpv_set_option_string(mMpv, "keep-open", "yes");
+
+	std::string options = SystemConf::getInstance()->get("mpv.options");
+	if (!options.empty())
 	{
-		// Get the version information for the file requested
-		DWORD dwSize = GetFileVersionInfoSize(path.c_str(), NULL);
-		if (dwSize == 0)
+		for (auto token : Utils::String::split(options, ' '))
 		{
-			printf("Error in GetFileVersionInfoSize: %d\n", GetLastError());
-			return;
-		}
+			auto eq = token.find('=');
+			if (eq == std::string::npos)
+				continue;
 
-		BYTE                *pbVersionInfo = NULL;
-		VS_FIXEDFILEINFO    *pFileInfo = NULL;
-		UINT                puLenFileInfo = 0;
-
-		pbVersionInfo = new BYTE[dwSize];
-
-		if (!GetFileVersionInfo(path.c_str(), 0, dwSize, pbVersionInfo))
-		{
-			printf("Error in GetFileVersionInfo: %d\n", GetLastError());
-			delete[] pbVersionInfo;
-			return;
-		}
-
-		if (!VerQueryValue(pbVersionInfo, TEXT("\\"), (LPVOID*)&pFileInfo, &puLenFileInfo))
-		{
-			printf("Error in VerQueryValue: %d\n", GetLastError());
-			delete[] pbVersionInfo;
-			return;
-		}
-
-		// FileVersion for libvlc.dll is >= 3.x.x.x ???
-		if (HIWORD(pFileInfo->dwFileVersionMS) >= 3)
-		{
-			auto badV2PluginPath = Utils::FileSystem::getPreferredPath(Utils::FileSystem::combine(dir, "plugins/gui/libqt4_plugin.dll"));
-			if (Utils::FileSystem::exists(badV2PluginPath))
-				Utils::FileSystem::removeFile(badV2PluginPath);
+			auto key = Utils::String::replace(token.substr(0, eq), "--", "");
+			mpv_set_option_string(mMpv, key.c_str(), token.substr(eq + 1).c_str());
 		}
 	}
-}
-#endif
 
-void VideoVlcComponent::init()
-{
-	if (mVLC != nullptr)
-		return;
+	// Most videos have a fader, so a playlist skips the first second of it.
+	if (mPlaylist != nullptr && mConfig.startDelay == 0 && !mConfig.showSnapshotDelay && !mConfig.showSnapshotNoVideo)
+		mpv_set_option_string(mMpv, "start", "0.7");
 
-	std::vector<std::string> cmdline;
-	cmdline.push_back("--quiet");
-	cmdline.push_back("--no-video-title-show");
-
-	std::string commandLine = SystemConf::getInstance()->get("vlc.commandline");
-	if (!commandLine.empty())
+	if (mpv_initialize(mMpv) < 0)
 	{
-		std::vector<std::string> tokens = Utils::String::split(commandLine, ' ');
-		for (auto token : tokens)
-			cmdline.push_back(token);
+		mpv_terminate_destroy(mMpv);
+		mMpv = nullptr;
+		return false;
 	}
 
-	const char* *theArgs = new const char*[cmdline.size()];
-
-	for (int i = 0 ; i < cmdline.size() ; i++)
-		theArgs[i] = cmdline[i].c_str();
-
-#if WIN32
-	_checkUpgradedVlcVersion();
-#endif
-
-	mVLC = libvlc_new(cmdline.size(), theArgs);
-
-	delete[] theArgs;
+	return true;
 }
 
-void VideoVlcComponent::handleLooping()
+void VideoMpvComponent::applyMute()
 {
-	if (mIsPlaying && mMediaPlayer && mMedia && !mIsParsing)
+	if (mMpv == nullptr)
+		return;
+
+	bool mute = !getPlayAudio()
+		|| (!mScreensaverMode && !Settings::getInstance()->getBool("VideoAudio"))
+		|| (Settings::getInstance()->getBool("ScreenSaverVideoMute") && mScreensaverMode);
+
+	int flag = mute ? 1 : 0;
+	mpv_set_property(mMpv, "mute", MPV_FORMAT_FLAG, &flag);
+}
+
+void VideoMpvComponent::handleLooping()
+{
+	if (mIsPlaying && mMpv && !mIsParsing)
 	{
-		libvlc_state_t state = libvlc_media_player_get_state(mMediaPlayer);
-		if (state == libvlc_Ended)
+		int eof = 0;
+		if (mpv_get_property(mMpv, "eof-reached", MPV_FORMAT_FLAG, &eof) < 0)
+			eof = 0;
+
+		if (eof || mReachedEnd)
 		{
 			if (mLoops >= 0)
 			{
@@ -718,44 +666,44 @@ void VideoVlcComponent::handleLooping()
 				}
 			}
 
-			if (!getPlayAudio() || (!mScreensaverMode && !Settings::getInstance()->getBool("VideoAudio")) || (Settings::getInstance()->getBool("ScreenSaverVideoMute") && mScreensaverMode))
-				libvlc_audio_set_mute(mMediaPlayer, 1);
+			applyMute();
 
-			//libvlc_media_player_set_position(mMediaPlayer, 0.0f);
-			if (mMedia)
-				libvlc_media_player_set_media(mMediaPlayer, mMedia);
+			mReachedEnd = false;
 
-			libvlc_media_player_play(mMediaPlayer);
+			const char* seek[] = { "seek", "0", "absolute", nullptr };
+			mpv_command(mMpv, seek);
+
+			int pause = 0;
+			mpv_set_property(mMpv, "pause", MPV_FORMAT_FLAG, &pause);
 		}
 	}
 }
 
-void VideoVlcComponent::onMediaParsed()
+void VideoMpvComponent::onMediaParsed()
 {
-	StopWatch stopWatch("[VideoVlcComponent] onMediaParsed", LogDebug);
+	StopWatch stopWatch("[VideoMpvComponent] onMediaParsed", LogDebug);
 
 	mVideoWidth = 0;
 	mVideoHeight = 0;
 
 	bool hasAudioTrack = false;
-	unsigned track_count;
 
-	libvlc_media_track_t** tracks;
-	track_count = libvlc_media_tracks_get(mMedia, &tracks);
-	for (unsigned track = 0; track < track_count; ++track)
+	char* aid = mpv_get_property_string(mMpv, "aid");
+	if (aid != nullptr)
 	{
-		if (tracks[track]->i_type == libvlc_track_audio)
-			hasAudioTrack = true;
-		else if (tracks[track]->i_type == libvlc_track_video)
-		{
-			mVideoWidth = tracks[track]->video->i_width;
-			mVideoHeight = tracks[track]->video->i_height;
-
-			if (hasAudioTrack)
-				break;
-		}
+		hasAudioTrack = strcmp(aid, "no") != 0 && aid[0] != 0;
+		mpv_free(aid);
 	}
-	libvlc_media_tracks_release(tracks, track_count);
+
+	int64_t w = 0, h = 0;
+	if (mpv_get_property(mMpv, "dwidth", MPV_FORMAT_INT64, &w) >= 0 &&
+		mpv_get_property(mMpv, "dheight", MPV_FORMAT_INT64, &h) >= 0)
+	{
+		mVideoWidth = (unsigned int)w;
+		mVideoHeight = (unsigned int)h;
+	}
+
+	mHasAudioTrack = hasAudioTrack;
 
 	if (mVideoWidth == 0 && mVideoHeight == 0 && Utils::FileSystem::isAudio(mPlayingVideoPath))
 	{
@@ -785,7 +733,7 @@ void VideoVlcComponent::onMediaParsed()
 		if (!mTargetSize.empty() && (mTargetSize.x() < maxSize.x() || mTargetSize.y() < maxSize.y()))
 			maxSize = mTargetSize;
 
-		// If video is bigger than display, ask VLC for a smaller image
+		// If video is bigger than display, render it smaller
 		auto sz = ImageIO::adjustPictureSize(Vector2i(mVideoWidth, mVideoHeight), Vector2i(maxSize.x(), maxSize.y()), mTargetIsMin);
 		if (sz.x() < mVideoWidth || sz.y() < mVideoHeight)
 		{
@@ -794,35 +742,78 @@ void VideoVlcComponent::onMediaParsed()
 		}
 	}
 
-	mMediaPlayer = libvlc_media_player_new_from_media(mMedia);
-	if (!mMediaPlayer)
-		return;
-
 	mContext = createContext();
 
 	if (hasAudioTrack)
 	{
-		if (!getPlayAudio() || (!mScreensaverMode && !Settings::getInstance()->getBool("VideoAudio")) || (Settings::getInstance()->getBool("ScreenSaverVideoMute") && mScreensaverMode))
-			libvlc_audio_set_mute(mMediaPlayer, 1);
-		else
+		applyMute();
+
+		if (getPlayAudio() && !(!mScreensaverMode && !Settings::getInstance()->getBool("VideoAudio")) && !(Settings::getInstance()->getBool("ScreenSaverVideoMute") && mScreensaverMode))
 			AudioManager::setVideoPlaying(true);
 	}
 
+	// A width of 1 is the marker for an audio file being played for its sound
+	// alone, so there is no point building a render context for it.
 	if (mVideoWidth > 1)
 	{
-		libvlc_video_set_callbacks(mMediaPlayer, lock, unlock, display, (void*)mContext);
-		libvlc_video_set_format(mMediaPlayer, "RGBA", (int)mVideoWidth, (int)mVideoHeight, (int)mVideoWidth * 4);
-	}	
-	
-	libvlc_media_player_play(mMediaPlayer);
+		mpv_render_param params[] = {
+			{ MPV_RENDER_PARAM_API_TYPE, (void*)MPV_RENDER_API_TYPE_SW },
+			{ MPV_RENDER_PARAM_INVALID, nullptr }
+		};
+
+		if (mpv_render_context_create(&mMpvRender, mMpv, params) < 0)
+			mMpvRender = nullptr;
+	}
+
+	int pause = 0;
+	mpv_set_property(mMpv, "pause", MPV_FORMAT_FLAG, &pause);
 }
 
-void VideoVlcComponent::startVideo()
+// One frame out of mpv and into the back surface. mpv writes the padding byte
+// of rgb0 as zero, which our textures read as a transparent alpha, so it is
+// forced opaque on the way past.
+void VideoMpvComponent::readFrame()
+{
+	if (mMpvRender == nullptr || mContext == nullptr || mVideoWidth <= 1)
+		return;
+
+	if (!(mpv_render_context_update(mMpvRender) & MPV_RENDER_UPDATE_FRAME))
+		return;
+
+	int frame = (mContext->surfaceId ^ 1);
+
+	int size[2] = { (int)mVideoWidth, (int)mVideoHeight };
+	size_t stride = (size_t)mVideoWidth * 4;
+	const char* format = "rgb0";
+
+	mpv_render_param params[] = {
+		{ MPV_RENDER_PARAM_SW_SIZE, size },
+		{ MPV_RENDER_PARAM_SW_FORMAT, (void*)format },
+		{ MPV_RENDER_PARAM_SW_STRIDE, &stride },
+		{ MPV_RENDER_PARAM_SW_POINTER, mContext->surfaces[frame] },
+		{ MPV_RENDER_PARAM_INVALID, nullptr }
+	};
+
+	if (mpv_render_context_render(mMpvRender, params) < 0)
+		return;
+
+	uint32_t* px = (uint32_t*)mContext->surfaces[frame];
+	for (size_t i = 0, n = (size_t)mVideoWidth * mVideoHeight; i < n; i++)
+		px[i] |= 0xFF000000;
+
+	mContext->surfaceId = frame;
+	mContext->hasFrame[frame] = true;
+
+	if (!isPlaying() && isWaitingForVideoToStart())
+		onVideoStarted();
+}
+
+void VideoMpvComponent::startVideo()
 {
 	if (!Settings::ShowVideoPreviews())
 		return;
 
-	if (mIsPlaying || !mVLC)
+	if (mIsPlaying || mMpv != nullptr)
 		return;
 
 	if (mVideoPath.empty())
@@ -831,7 +822,7 @@ void VideoVlcComponent::startVideo()
 		return;
 	}
 
-	StopWatch stopWatch("[VideoVlcComponent] startVideo", LogDebug);
+	StopWatch stopWatch("[VideoMpvComponent] startVideo", LogDebug);
 
 #ifdef WIN32
 	std::string path = Utils::String::replace(mVideoPath, "/", "\\");
@@ -839,8 +830,7 @@ void VideoVlcComponent::startVideo()
 	std::string path = mVideoPath;
 #endif
 
-	mMedia = libvlc_media_new_path(mVLC, path.c_str());
-	if (!mMedia)
+	if (!openHandle())
 	{
 		stopVideo();
 		return;
@@ -851,80 +841,59 @@ void VideoVlcComponent::startVideo()
 
 	mTexture = nullptr;
 	mCurrentLoop = 0;
-	mIsParsing = false;
+	mReachedEnd = false;
+	mHasAudioTrack = false;
 	mPlayingVideoPath = mVideoPath;
 
 	PowerSaver::pause();
 
-	// use : vlc –long-help
-	// WIN32 ? libvlc_media_add_option(mMedia, ":avcodec-hw=dxva2");
-	// RPI/OMX ? libvlc_media_add_option(mMedia, ":codec=mediacodec,iomx,all"); .
+	applyMute();
 
-	std::string options = SystemConf::getInstance()->get("vlc.options");
-	if (!options.empty())
+	const char* cmd[] = { "loadfile", path.c_str(), nullptr };
+	if (mpv_command(mMpv, cmd) < 0)
 	{
-		for (auto token : Utils::String::split(options, ' '))
-			libvlc_media_add_option(mMedia, token.c_str());
+		stopVideo();
+		return;
 	}
 
-	// If we have a playlist : most videos have a fader, skip it 1 second
-	if (mPlaylist != nullptr && mConfig.startDelay == 0 && !mConfig.showSnapshotDelay && !mConfig.showSnapshotNoVideo)
-		libvlc_media_add_option(mMedia, ":start-time=0.7");
-
-#if LIBVLC_VERSION_MAJOR >= 3
-	#if WIN32
-		const char* vlc_ver = libvlc_get_version();
-		if (vlc_ver[0] < '3')
-			libvlc_media_parse(mMedia);
-		else
-	#endif
-	{
-		libvlc_media_parse_with_options(mMedia, libvlc_media_parse_local, 0);
-		if ((int)libvlc_media_get_parsed_status(mMedia) == 0)
-		{
-			mIsParsing = true;
-			return;
-		}
-	}
-#else
-	// It looks like an older version of the library is being used on Windows.
-	libvlc_media_parse(mMedia);
-#endif
-
-	onMediaParsed();
+	// Dimensions are only known once mpv has opened the file, so the rest of
+	// the setup waits for MPV_EVENT_FILE_LOADED in update().
+	mIsParsing = true;
 }
 
-void VideoVlcComponent::stopVideo()
+void VideoMpvComponent::stopVideo()
 {
-	if (mMediaPlayer == nullptr && mMedia == nullptr && !mContext)
+	if (mMpv == nullptr && !mContext)
 		return;
 
-	StopWatch stopWatch("[VideoVlcComponent] stopVideo", LogDebug);
+	StopWatch stopWatch("[VideoMpvComponent] stopVideo", LogDebug);
 
 	mIsPlaying = false;
 	mIsWaitingForVideoToStart = false;
 	mStartDelayed = false;
 
-	// Release the media player so it stops calling back to us
-	if (mMediaPlayer)
+	mIsParsing = false;
+	mReachedEnd = false;
+
+	// The render context has to go before the handle it belongs to, and it is
+	// cheap, so it is freed here rather than on the release thread.
+	if (mMpvRender)
 	{
-		mediaplayer_release_async(mContext, mMediaPlayer);
-		mMediaPlayer = nullptr;		
+		mpv_render_context_free(mMpvRender);
+		mMpvRender = nullptr;
+	}
+
+	if (mMpv)
+	{
+		mpv_release_async(mContext, mMpv);
+		mMpv = nullptr;
+
+		PowerSaver::resume();
 	}
 	else if (mContext)
 		delete mContext;
 
 	mContext = nullptr;
-
-	// Release the media
-	if (mMedia)
-	{
-		mIsParsing = false;
-		libvlc_media_release(mMedia); 
-		mMedia = NULL;
-
-		PowerSaver::resume();
-	}		
 
 	if (mIsTopWindow) // Release texture memory -> except if mDisable by topWindow ( ex: menu was poped )
 		mTexture = nullptr;
@@ -932,7 +901,7 @@ void VideoVlcComponent::stopVideo()
 	AudioManager::setVideoPlaying(false);
 }
 
-void VideoVlcComponent::applyTheme(const std::shared_ptr<ThemeData>& theme, const std::string& view, const std::string& element, unsigned int properties)
+void VideoMpvComponent::applyTheme(const std::shared_ptr<ThemeData>& theme, const std::string& view, const std::string& element, unsigned int properties)
 {
 	using namespace ThemeFlags;
 
@@ -943,15 +912,15 @@ void VideoVlcComponent::applyTheme(const std::shared_ptr<ThemeData>& theme, cons
 	if (elem && elem->has("effect"))
 	{
 		if (!(elem->get<std::string>("effect").compare("slideRight")))
-			mEffect = VideoVlcFlags::VideoVlcEffect::SLIDERIGHT;
+			mEffect = VideoMpvFlags::VideoMpvEffect::SLIDERIGHT;
 		else if (!(elem->get<std::string>("effect").compare("size")))
-			mEffect = VideoVlcFlags::VideoVlcEffect::SIZE;
+			mEffect = VideoMpvFlags::VideoMpvEffect::SIZE;
 		else if (!(elem->get<std::string>("effect").compare("bump")))
-			mEffect = VideoVlcFlags::VideoVlcEffect::BUMP;
+			mEffect = VideoMpvFlags::VideoMpvEffect::BUMP;
 		else
-			mEffect = VideoVlcFlags::VideoVlcEffect::NONE;
+			mEffect = VideoMpvFlags::VideoMpvEffect::NONE;
 
-		mConfig.scaleSnapshot = (mEffect != VideoVlcFlags::VideoVlcEffect::NONE);
+		mConfig.scaleSnapshot = (mEffect != VideoMpvFlags::VideoMpvEffect::NONE);
 	}
 
 	if (elem && elem->has("roundCorners"))
@@ -982,23 +951,41 @@ void VideoVlcComponent::applyTheme(const std::shared_ptr<ThemeData>& theme, cons
 	VideoComponent::applyTheme(theme, view, element, properties);
 }
 
-void VideoVlcComponent::update(int deltaTime)
+void VideoMpvComponent::update(int deltaTime)
 {
 	mElapsed += deltaTime;
 
 	if (mConfig.showSnapshotNoVideo || mConfig.showSnapshotDelay)
 		mStaticImage.update(deltaTime);
 
-	if (mIsParsing && mMedia != nullptr && libvlc_media_get_parsed_status(mMedia) != 0)
+	// mpv is polled rather than pushing at us, so both the events and the frames
+	// are picked up here, on the thread that owns the surfaces.
+	if (mMpv != nullptr)
 	{
-		mIsParsing = false;
-		onMediaParsed();
-	}		
-	
+		while (true)
+		{
+			mpv_event* event = mpv_wait_event(mMpv, 0);
+			if (event == nullptr || event->event_id == MPV_EVENT_NONE)
+				break;
+
+			if (event->event_id == MPV_EVENT_FILE_LOADED && mIsParsing)
+			{
+				mIsParsing = false;
+				onMediaParsed();
+			}
+			else if (event->event_id == MPV_EVENT_END_FILE)
+				mReachedEnd = true;
+			else if (event->event_id == MPV_EVENT_SHUTDOWN)
+				break;
+		}
+
+		readFrame();
+	}
+
 	VideoComponent::update(deltaTime);
 }
 
-void VideoVlcComponent::onShow()
+void VideoMpvComponent::onShow()
 {
 	VideoComponent::onShow();
 	mStaticImage.onShow();
@@ -1007,7 +994,7 @@ void VideoVlcComponent::onShow()
 		pauseStoryboard();
 }
 
-ThemeData::ThemeElement::Property VideoVlcComponent::getProperty(const std::string name)
+ThemeData::ThemeElement::Property VideoMpvComponent::getProperty(const std::string name)
 {
 	Vector2f scale = getParent() ? getParent()->getSize() : Vector2f((float)Renderer::getScreenWidth(), (float)Renderer::getScreenHeight());
 	
@@ -1037,7 +1024,7 @@ ThemeData::ThemeElement::Property VideoVlcComponent::getProperty(const std::stri
 	return VideoComponent::getProperty(name);
 }
 
-void VideoVlcComponent::setProperty(const std::string name, const ThemeData::ThemeElement::Property& value)
+void VideoMpvComponent::setProperty(const std::string name, const ThemeData::ThemeElement::Property& value)
 {
 	Vector2f scale = getParent() ? getParent()->getSize() : Vector2f((float)Renderer::getScreenWidth(), (float)Renderer::getScreenHeight());
 	
@@ -1065,7 +1052,7 @@ void VideoVlcComponent::setProperty(const std::string name, const ThemeData::The
 		VideoComponent::setProperty(name, value);
 }
 
-void VideoVlcComponent::pauseVideo()
+void VideoMpvComponent::pauseVideo()
 {
 	if (!mIsPlaying && !mIsWaitingForVideoToStart && !mStartDelayed)
 		return;
@@ -1074,40 +1061,43 @@ void VideoVlcComponent::pauseVideo()
 	mIsWaitingForVideoToStart = false;
 	mStartDelayed = false;
 
-	if (mMediaPlayer == NULL || mMedia == NULL)
+	if (mMpv == NULL)
 		stopVideo();
 	else
 	{
-		libvlc_media_player_pause(mMediaPlayer);
+		int pause = 1;
+		mpv_set_property(mMpv, "pause", MPV_FORMAT_FLAG, &pause);
 		
 		PowerSaver::resume();
 		AudioManager::setVideoPlaying(false);
 	}
 }
 
-void VideoVlcComponent::resumeVideo()
+void VideoMpvComponent::resumeVideo()
 {
 	if (mIsPlaying)
 		return;
 
-	if (mMediaPlayer == NULL || mMedia == NULL)
+	if (mMpv == NULL)
 	{
 		startVideoWithDelay();
 		return;
 	}
 
 	mIsPlaying = true;
-	libvlc_media_player_play(mMediaPlayer);
+
+	int pause = 0;
+	mpv_set_property(mMpv, "pause", MPV_FORMAT_FLAG, &pause);
 	PowerSaver::pause();
 	AudioManager::setVideoPlaying(true);
 }
 
-bool VideoVlcComponent::isPaused()
+bool VideoMpvComponent::isPaused()
 {
-	return !mIsPlaying && !mIsWaitingForVideoToStart && !mStartDelayed && mMedia != NULL;
+	return !mIsPlaying && !mIsWaitingForVideoToStart && !mStartDelayed && mMpv != NULL;
 }
 
-void VideoVlcComponent::setSaturation(float saturation)
+void VideoMpvComponent::setSaturation(float saturation)
 {
 	mSaturation = saturation;
 }

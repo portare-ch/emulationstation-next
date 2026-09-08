@@ -8,10 +8,7 @@
 #include "animations/LambdaAnimation.h"
 #include "ImageIO.h"
 
-#ifdef _RPI_
-#include "components/VideoPlayerComponent.h"
-#endif
-#include "components/VideoVlcComponent.h"
+#include "components/VideoMpvComponent.h"
 #include "utils/FileSystemUtil.h"
 
 #include "Settings.h"
@@ -537,11 +534,11 @@ void GridTileComponent::createVideo()
 	if (mVideo != nullptr)
 		return;
 
-	auto vlc = new VideoVlcComponent(mWindow);
-	vlc->setEffect(VideoVlcFlags::SIZE);
+	auto video = new VideoMpvComponent(mWindow);
+	video->setEffect(VideoMpvFlags::SIZE);
 
 	// video
-	mVideo = vlc;
+	mVideo = video;
 	mVideo->setOrigin(0.5f, 0.5f);
 	mVideo->setStartDelay(VIDEODELAY);
 	mVideo->setDefaultZIndex(11);
