@@ -31,7 +31,7 @@
 #include "ThreadedHasher.h"
 #include <FreeImage.h>
 #include "ImageIO.h"
-#include "components/VideoVlcComponent.h"
+#include "components/VideoMpvComponent.h"
 #include <csignal>
 #include "InputConfig.h"
 #include "RetroAchievements.h"
@@ -368,7 +368,7 @@ void playVideo()
 
 	bool exitLoop = false;
 
-	VideoVlcComponent vid(&window);
+	VideoMpvComponent vid(&window);
 	vid.setVideo(gPlayVideo);
 	vid.setOrigin(0.5f, 0.5f);
 	vid.setPosition(Renderer::getScreenWidth() / 2.0f, Renderer::getScreenHeight() / 2.0f);
@@ -534,7 +534,6 @@ int main(int argc, char* argv[])
 
 	// Threaded initializations
 	auto threadPool = new Utils::ThreadPool("main()", -3);
-	auto vlcInit = threadPool->queueWorkItem([] { VideoVlcComponent::init(); });
 	threadPool->queueWorkItem([] { ApiSystem::getInstance()->getIpAddress(); });
 	threadPool->queueWorkItem([] { MetaDataList::initMetadata(); });
 	threadPool->queueWorkItem([] { MameNames::init(); });
@@ -573,7 +572,7 @@ int main(int argc, char* argv[])
 	if (ApiSystem::getInstance()->isScriptingSupported(ApiSystem::PDFEXTRACTION))
 		TextureData::PdfHandler = ApiSystem::getInstance();
 	
-	threadPool->waitAllExcept(vlcInit); // Wait for what's necessary for loadSystemConfigFile
+	threadPool->wait(); // Wait for what's necessary for loadSystemConfigFile
 
 	const char* errorMsg = NULL;
 	if (!loadSystemConfigFile(splashScreen && splashScreenProgress ? &window : nullptr, &errorMsg))

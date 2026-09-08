@@ -1,9 +1,6 @@
 #include "SystemScreenSaver.h"
 
-#ifdef _RPI_
-#include "components/VideoPlayerComponent.h"
-#endif
-#include "components/VideoVlcComponent.h"
+#include "components/VideoMpvComponent.h"
 #include "utils/FileSystemUtil.h"
 #include "views/gamelist/IGameListView.h"
 #include "views/ViewController.h"
@@ -966,13 +963,7 @@ void VideoScreenSaver::setVideo(const std::string path)
 {
 	if (mVideo == nullptr)
 	{
-#ifdef _RPI_
-		// Create the correct type of video component
-		if (Settings::getInstance()->getBool("ScreenSaverOmxPlayer"))
-			mVideo = new VideoPlayerComponent(mWindow, getTitlePath());
-		else
-#endif
-		mVideo = new VideoVlcComponent(mWindow);
+		mVideo = new VideoMpvComponent(mWindow);
 
 		mVideo->setRoundCorners(0);
 		mVideo->topWindow(true);

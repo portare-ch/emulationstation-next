@@ -697,11 +697,7 @@ void GuiImageViewer::showCbz(Window* window, const std::string imagePath)
 	imgViewer->loadCbz(imagePath);
 }
 
-#ifdef _RPI_
-#include "Settings.h"
-#include "components/VideoPlayerComponent.h"
-#endif
-#include "components/VideoVlcComponent.h"
+#include "components/VideoMpvComponent.h"
 
 void GuiVideoViewer::playVideo(Window* window, const std::string videoPath)
 {
@@ -716,16 +712,11 @@ GuiVideoViewer::GuiVideoViewer(Window* window, const std::string& path) : GuiCom
 	setPosition(0, 0);
 	setSize(Renderer::getScreenWidth(), Renderer::getScreenHeight());
 
-#ifdef _RPI_
-	if (Settings::getInstance()->getBool("VideoOmxPlayer"))
-		mVideo = new VideoPlayerComponent(mWindow, "");
-	else
-#endif
 	{
-		mVideo = new VideoVlcComponent(mWindow);
+		mVideo = new VideoMpvComponent(mWindow);
 
-		((VideoVlcComponent*)mVideo)->setLinearSmooth();
-		((VideoVlcComponent*)mVideo)->setEffect(VideoVlcFlags::NONE);
+		((VideoMpvComponent*)mVideo)->setLinearSmooth();
+		((VideoMpvComponent*)mVideo)->setEffect(VideoMpvFlags::NONE);
 	}
 	
 	mVideo->setOrigin(0.5f, 0.5f);
