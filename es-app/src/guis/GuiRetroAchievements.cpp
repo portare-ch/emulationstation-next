@@ -1,4 +1,3 @@
-#include "guis/GuiInstall.h"
 #include "guis/GuiMsgBox.h"
 #include "guis/GuiRetroAchievements.h"
 #include "guis/GuiSettings.h"

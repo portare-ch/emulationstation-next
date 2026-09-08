@@ -149,14 +149,6 @@ bool ApiSystem::setOverscan(bool enable)
 	return executeScript("portareos-config overscan " + std::string(enable ? "enable" : "disable"));
 }
 
-bool ApiSystem::setOverclock(std::string mode) 
-{
-	if (mode.empty())
-		return false;
-
-	return executeScript("batocera-overclock set " + mode);
-}
-
 #ifdef BATOCERA
 bool ApiSystem::areCpuMitigationsEnabled()
 {
@@ -234,36 +226,6 @@ std::pair<std::string, int> ApiSystem::backupSystem(BusyComponent* ui, std::stri
 		fclose(flog);
 
 	int exitCode = WEXITSTATUS(pclose(pipe));
-	return std::pair<std::string, int>(std::string(line), exitCode);
-}
-
-std::pair<std::string, int> ApiSystem::installSystem(BusyComponent* ui, std::string device, std::string architecture) 
-{
-	LOG(LogDebug) << "ApiSystem::installSystem";
-
-	std::string updatecommand = "batocera-install install " + device + " " + architecture;
-	FILE *pipe = popen(updatecommand.c_str(), "r");
-	if (pipe == NULL)
-		return std::pair<std::string, int>(std::string("Cannot call install command"), -1);
-
-	char line[1024] = "";
-
-	FILE *flog = fopen(Utils::FileSystem::combine(Paths::getLogPath(), "install.log").c_str(), "w");
-	while (fgets(line, 1024, pipe)) 
-	{
-		strtok(line, "\n");
-		if (flog != NULL) fprintf(flog, "%s\n", line);
-		ui->setText(std::string(line));
-	}
-
-	int exitCode = WEXITSTATUS(pclose(pipe));
-
-	if (flog != NULL)
-	{
-		fprintf(flog, "Exit code : %d\n", exitCode);
-		fclose(flog);
-	}
-
 	return std::pair<std::string, int>(std::string(line), exitCode);
 }
 
@@ -622,21 +584,6 @@ std::vector<std::string> ApiSystem::getCustomRunners()
 std::vector<std::string> ApiSystem::getAvailableBackupDevices() 
 {
 	return executeEnumerationScript("portareos-sync list");
-}
-
-std::vector<std::string> ApiSystem::getAvailableInstallDevices() 
-{
-	return executeEnumerationScript("batocera-install listDisks");
-}
-
-std::vector<std::string> ApiSystem::getAvailableInstallArchitectures() 
-{
-	return executeEnumerationScript("batocera-install listArchs");
-}
-
-std::vector<std::string> ApiSystem::getAvailableOverclocking() 
-{
-	return executeEnumerationScript("echo no");
 }
 
 std::vector<std::string> ApiSystem::getSystemInformations() 
@@ -2117,9 +2064,6 @@ bool ApiSystem::isScriptingSupported(ScriptId script)
 	case ApiSystem::BIOSINFORMATION:
 		executables.push_back("portareos-systems");
 		break;
-	case ApiSystem::OVERCLOCK:
-		executables.push_back("batocera-overclock");
-		break;
 	case ApiSystem::NETPLAY:
 		executables.push_back("7zr");
 		break;
@@ -2142,21 +2086,12 @@ bool ApiSystem::isScriptingSupported(ScriptId script)
 	case ApiSystem::BACKUP:
 		executables.push_back("portareos-sync");
 		break;
-	case ApiSystem::INSTALL:
-		executables.push_back("batocera-install");
-		break;	
 	case ApiSystem::UPGRADE:
 		executables.push_back("portareos-update");
 		break;
 	case ApiSystem::SUSPEND:
 		return (Utils::FileSystem::exists("/usr/sbin/pm-suspend") && Utils::FileSystem::exists("/usr/bin/pm-is-supported") && executeScript("/usr/bin/pm-is-supported --suspend"));
 	case ApiSystem::READPLANEMODE:
-	case ApiSystem::SERVICES:
-		executables.push_back("batocera-services");
-		break;
-	case ApiSystem::BACKGLASS:
-		executables.push_back("batocera-backglass");
-		break;
 	case ApiSystem::NFC:
 		executables.push_back("batocera-nfc");
 		break;
@@ -2704,28 +2639,6 @@ bool ApiSystem::setPlaneMode(bool enable)
 	return executeScript("batocera-planemode " + std::string(enable ? "enable" : "disable"));
 }
 
-std::vector<Service> ApiSystem::getServices()
-{
-	std::vector<Service> services;
-
-	LOG(LogDebug) << "ApiSystem::getServices";
-
-	auto slines = executeEnumerationScript("batocera-services list");
-
-	for (auto sline : slines) 
-	{
-		auto splits = Utils::String::split(sline, ';', true);
-		if (splits.size() == 2) 
-		{
-			Service s;
-			s.name = splits[0];
-			s.enabled = (splits[1] == "*");
-			services.push_back(s);
-		}
-	}
-	return services;
-}
-
 std::vector<Hotkey> ApiSystem::getJoysticksHotkeys() {
   std::vector<Hotkey> hotkeys;
 
@@ -3177,40 +3090,6 @@ std::string ApiSystem::detectEvKey(const std::string& device_path) {
     }
 
   return vkey;
-}
-
-std::vector<std::string> ApiSystem::backglassThemes() {
-  std::vector<std::string> themes;
-
-  LOG(LogDebug) << "ApiSystem::backglassThemes";
-
-  auto slines = executeEnumerationScript("batocera-backglass list-themes");
-
-  for (auto sline : slines) 
-    {
-      themes.push_back(sline);
-    }
-  return themes;
-}
-
-void ApiSystem::restartBackglass() {
-  LOG(LogDebug) << "ApiSystem::restartBackglass";
-  executeScript("/usr/bin/batocera-backglass restart");
-}
-
-bool ApiSystem::enableService(std::string name, bool enable) 
-{
-	std::string serviceName = name;
-	if (serviceName.find(" ") != std::string::npos)
-		serviceName = "\"" + serviceName + "\"";
-
-	LOG(LogDebug) << "ApiSystem::enableService " << serviceName;
-
-	bool res = executeScript("batocera-services " + std::string(enable ? "enable" : "disable") + " " + serviceName);
-	if (res)
-		res = executeScript("batocera-services " + std::string(enable ? "start" : "stop") + " " + serviceName);
-	
-	return res;
 }
 
 std::vector<std::string> ApiSystem::getEjectableDrives()
