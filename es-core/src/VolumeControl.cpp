@@ -8,13 +8,15 @@
 #include <mmdeviceapi.h>
 #endif
 
-#ifdef _ENABLE_PIPEWIRE_
+#if defined(__linux__)
 #include <cmath>
 #include <cstring>
 #include <map>
 #include <string>
 #include <pipewire/pipewire.h>
+#include <pipewire/extensions/metadata.h>
 #include <spa/param/props.h>
+#include <spa/param/audio/raw.h>
 #include <spa/pod/builder.h>
 #include <spa/pod/parser.h>
 #include <spa/utils/json.h>
@@ -257,22 +259,24 @@ private:
 
 		spa_json it[2];
 		char name[256] = { 0 };
+		char k[128];
 
-		if (spa_json_begin_object(&it[0], value, strlen(value)) <= 0)
+		spa_json_init(&it[0], value, strlen(value));
+		if (spa_json_enter_object(&it[0], &it[1]) <= 0)
 			return 0;
 
-		char k[128];
-		while (spa_json_get_string(&it[0], k, sizeof(k)) > 0)
+		while (spa_json_get_string(&it[1], k, sizeof(k)) > 0)
 		{
 			if (strcmp(k, "name") == 0)
 			{
-				if (spa_json_get_string(&it[0], name, sizeof(name)) > 0)
+				if (spa_json_get_string(&it[1], name, sizeof(name)) > 0)
 					pThis->onDefaultSinkChanged(name);
 
 				break;
 			}
 
-			if (spa_json_next(&it[0], &value) <= 0)
+			const char* skip;
+			if (spa_json_next(&it[1], &skip) <= 0)
 				break;
 		}
 
@@ -287,13 +291,12 @@ private:
 		if (param == nullptr || id != SPA_PARAM_Props)
 			return;
 
-		const spa_pod* value = spa_pod_find_prop(param, nullptr, SPA_PROP_channelVolumes);
-		if (value == nullptr)
+		const spa_pod_prop* prop = spa_pod_find_prop(param, nullptr, SPA_PROP_channelVolumes);
+		if (prop == nullptr)
 			return;
 
 		float volumes[SPA_AUDIO_MAX_CHANNELS];
-		uint32_t n = spa_pod_copy_array(&((const spa_pod_prop*)value)->value,
-			SPA_TYPE_Float, volumes, SPA_AUDIO_MAX_CHANNELS);
+		uint32_t n = spa_pod_copy_array(&prop->value, SPA_TYPE_Float, volumes, SPA_AUDIO_MAX_CHANNELS);
 
 		if (n == 0)
 			return;
@@ -348,15 +351,6 @@ static PipeWireControl PipeWire;
 
 #endif
 
-#if defined(__linux__)
-#if defined(_RPI_) || defined(_VERO4K_)
-		std::string VolumeControl::mixerName = "PCM";
-#else
-		std::string VolumeControl::mixerName = "Master";
-#endif
-	std::string VolumeControl::mixerCard = "default";
-#endif
-
 std::weak_ptr<VolumeControl> VolumeControl::sInstance;
 
 
@@ -364,8 +358,6 @@ VolumeControl::VolumeControl()
 	: internalVolume(0)
 #if defined (__APPLE__)
 	#error TODO: Not implemented for MacOS yet!!!
-#elif defined(__linux__)
-	, mixerIndex(0), mixerHandle(nullptr), mixerElem(nullptr), mixerSelemId(nullptr)
 #elif defined(WIN32) || defined(_WIN32)
 	, mixerHandle(nullptr), endpointVolume(nullptr)
 #endif
@@ -375,10 +367,8 @@ VolumeControl::VolumeControl()
 
 VolumeControl::~VolumeControl()
 {
-#ifdef _ENABLE_PIPEWIRE_
 	if (PipeWire.isReady())
 		PipeWire.exit();
-#endif
 
 	deinit();
 }
@@ -400,116 +390,10 @@ void VolumeControl::init()
 #if defined (__APPLE__)
 	#error TODO: Not implemented for MacOS yet!!!
 #elif defined(__linux__)
-
-#ifdef _ENABLE_PIPEWIRE_
-	// Read initial volume from systemconf
+	// The volume the user last chose, which pipewire has no memory of.
 	std::string volume = SystemConf::getInstance()->get("audio.volume");
 	PipeWire.setVolume(volume.empty() ? 100 : Utils::String::toInteger(volume), false);
 	return;
-#endif
-
-	//try to open mixer device
-	if (mixerHandle == nullptr)
-	{
-		// Allow users to override the AudioCard and MixerName in es_settings.cfg
-		auto audioCard = Settings::getInstance()->getString("AudioCard");
-		if (!audioCard.empty())
-			mixerCard = audioCard;
-
-		auto audioDevice = Settings::getInstance()->getString("AudioDevice");
-		if (!audioDevice.empty())
-			mixerName = audioDevice;
-
-		snd_mixer_selem_id_alloca(&mixerSelemId);
-		//sets simple-mixer index and name
-		snd_mixer_selem_id_set_index(mixerSelemId, mixerIndex);
-		snd_mixer_selem_id_set_name(mixerSelemId, mixerName.c_str());
-		//open mixer
-		if (snd_mixer_open(&mixerHandle, 0) >= 0)
-		{
-			LOG(LogDebug) << "VolumeControl::init() - Opened ALSA mixer";
-			//ok. attach to defualt card
-			if (snd_mixer_attach(mixerHandle, mixerCard.c_str()) >= 0)
-			{
-				LOG(LogDebug) << "VolumeControl::init() - Attached to default card";
-				//ok. register simple element class
-				if (snd_mixer_selem_register(mixerHandle, NULL, NULL) >= 0)
-				{
-					LOG(LogDebug) << "VolumeControl::init() - Registered simple element class";
-					//ok. load registered elements
-					if (snd_mixer_load(mixerHandle) >= 0)
-					{
-						LOG(LogDebug) << "VolumeControl::init() - Loaded mixer elements";
-						//ok. find elements now
-						mixerElem = snd_mixer_find_selem(mixerHandle, mixerSelemId);
-						if (mixerElem != nullptr)
-						{
-							//wohoo. good to go...
-							LOG(LogDebug) << "VolumeControl::init() - Mixer initialized";
-						}
-						else
-						{
-							LOG(LogInfo) << "VolumeControl::init() - Unable to find mixer " << mixerName << " -> Search for alternative mixer";
-
-							snd_mixer_selem_id_t *mxid = nullptr;
-							snd_mixer_selem_id_alloca(&mxid);
-
-							for (snd_mixer_elem_t* mxe = snd_mixer_first_elem(mixerHandle); mxe != nullptr; mxe = snd_mixer_elem_next(mxe))
-							{
-								if (snd_mixer_selem_has_playback_volume(mxe) != 0 && snd_mixer_selem_is_active(mxe) != 0)
-								{
-									snd_mixer_selem_get_id(mxe, mxid);
-									mixerName = snd_mixer_selem_id_get_name(mxid);
-
-									LOG(LogInfo) << "mixername : " << mixerName;
-
-									snd_mixer_selem_id_set_name(mixerSelemId, mixerName.c_str());
-									mixerElem = snd_mixer_find_selem(mixerHandle, mixerSelemId);
-									if (mixerElem != nullptr)
-									{
-										//wohoo. good to go...
-										LOG(LogDebug) << "VolumeControl::init() - Mixer initialized";
-										break;
-									}
-									else
-										LOG(LogDebug) << "VolumeControl::init() - Mixer not initialized";
-								}
-							}
-
-							if (mixerElem == nullptr)
-							{
-								LOG(LogError) << "VolumeControl::init() - Failed to find mixer elements!";
-								snd_mixer_close(mixerHandle);
-								mixerHandle = nullptr;
-							}
-						}
-					}
-					else
-					{
-						LOG(LogError) << "VolumeControl::init() - Failed to load mixer elements!";
-						snd_mixer_close(mixerHandle);
-						mixerHandle = nullptr;
-					}
-				}
-				else
-				{
-					LOG(LogError) << "VolumeControl::init() - Failed to register simple element class!";
-					snd_mixer_close(mixerHandle);
-					mixerHandle = nullptr;
-				}
-			}
-			else
-			{
-				LOG(LogError) << "VolumeControl::init() - Failed to attach to default card!";
-				snd_mixer_close(mixerHandle);
-				mixerHandle = nullptr;
-			}
-		}
-		else
-		{
-			LOG(LogError) << "VolumeControl::init() - Failed to open ALSA mixer!";
-		}
-	}
 #elif defined(WIN32) || defined(_WIN32)
 	//get windows version information
 	OSVERSIONINFOEXA osVer = {sizeof(OSVERSIONINFO)};
@@ -591,18 +475,7 @@ void VolumeControl::deinit()
 #if defined (__APPLE__)
 	#error TODO: Not implemented for MacOS yet!!!
 #elif defined(__linux__)
-
-#ifdef _ENABLE_PIPEWIRE_
 	return;
-#endif
-
-	if (mixerHandle != nullptr) {
-		snd_mixer_detach(mixerHandle, mixerCard.c_str());
-		snd_mixer_free(mixerHandle);
-		snd_mixer_close(mixerHandle);
-		mixerHandle = nullptr;
-		mixerElem = nullptr;
-	}
 #elif defined(WIN32) || defined(_WIN32)
 	if (mixerHandle != nullptr) {
 		mixerClose(mixerHandle);
@@ -623,48 +496,7 @@ int VolumeControl::getVolume() const
 #if defined (__APPLE__)
 	#error TODO: Not implemented for MacOS yet!!!
 #elif defined(__linux__)
-
-#ifdef _ENABLE_PIPEWIRE_
-	return PipeWire.getVolume();	
-#endif
-
-	if (mixerElem != nullptr)
-	{
-		if (mixerHandle != nullptr)
-			snd_mixer_handle_events(mixerHandle);
-		/*
-		int mute_state;
-		if (snd_mixer_selem_has_playback_switch(mixerElem)) 
-		{
-			snd_mixer_selem_get_playback_switch(mixerElem, SND_MIXER_SCHN_UNKNOWN, &mute_state);
-			if (!mute_state) // system Muted
-				return 0;
-		}
-		*/
-		//get volume range
-		long minVolume;
-		long maxVolume;
-		if (snd_mixer_selem_get_playback_volume_range(mixerElem, &minVolume, &maxVolume) == 0)
-		{
-			//ok. now get volume
-			long rawVolume;
-			if (snd_mixer_selem_get_playback_volume(mixerElem, SND_MIXER_SCHN_MONO, &rawVolume) == 0)
-			{
-				//worked. bring into range 0-100
-				rawVolume -= minVolume;
-				if (rawVolume > 0)
-					volume = (rawVolume * 100.0) / (maxVolume - minVolume) + 0.5;
-			}
-			else
-			{
-				LOG(LogError) << "VolumeControl::getVolume() - Failed to get mixer volume!";
-			}
-		}
-		else
-		{
-			LOG(LogError) << "VolumeControl::getVolume() - Failed to get volume range!";
-		}
-	}
+	return PipeWire.getVolume();
 #elif defined(WIN32) || defined(_WIN32)
 	if (mixerHandle != nullptr)
 	{
@@ -724,35 +556,10 @@ void VolumeControl::setVolume(int volume)
 #if defined (__APPLE__)
 	#error TODO: Not implemented for MacOS yet!!!
 #elif defined(__linux__)
-
-#ifdef _ENABLE_PIPEWIRE_
 	if (PipeWire.isReady())
-	{
 		PipeWire.setVolume(volume);
-	}
-	return;
-#endif
 
-	if (mixerElem != nullptr)
-	{
-		//get volume range
-		long minVolume;
-		long maxVolume;
-		if (snd_mixer_selem_get_playback_volume_range(mixerElem, &minVolume, &maxVolume) == 0)
-		{
-			//ok. bring into minVolume-maxVolume range and set
-			long rawVolume = (volume * (maxVolume - minVolume) / 100) + minVolume;
-			if (snd_mixer_selem_set_playback_volume(mixerElem, SND_MIXER_SCHN_FRONT_LEFT, rawVolume) < 0 
-				|| snd_mixer_selem_set_playback_volume(mixerElem, SND_MIXER_SCHN_FRONT_RIGHT, rawVolume) < 0)
-			{
-				LOG(LogError) << "VolumeControl::getVolume() - Failed to set mixer volume!";
-			}
-		}
-		else
-		{
-			LOG(LogError) << "VolumeControl::getVolume() - Failed to get volume range!";
-		}
-	}
+	return;
 #elif defined(WIN32) || defined(_WIN32)
 	if (mixerHandle != nullptr)
 	{
@@ -791,12 +598,7 @@ bool VolumeControl::isAvailable()
 #if defined (__APPLE__)
 	return false;
 #elif defined(__linux__)
-
-#ifdef _ENABLE_PIPEWIRE_
 	return PipeWire.isReady();
-#endif
-
-	return mixerHandle != nullptr && mixerElem != nullptr;
 #elif defined(WIN32) || defined(_WIN32)
 	return mixerHandle != nullptr || endpointVolume != nullptr;
 #endif

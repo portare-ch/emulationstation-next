@@ -68,7 +68,6 @@ jobs:
             -DDISABLE_KODI=1 \
             -DENABLE_FILEMANAGER=0 \
             -DCEC=0 \
-            -DENABLE_PIPEWIRE=1 \
             -DUSE_SYSTEM_PUGIXML=1 \
             -DGLES3=1
 
