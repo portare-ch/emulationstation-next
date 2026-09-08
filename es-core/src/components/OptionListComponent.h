@@ -601,7 +601,7 @@ private:
 			// display # selected
 		  	char strbuf[256];
 			int x = getSelectedObjects().size();
-		  	snprintf(strbuf, 256, ngettext("%i SELECTED", "%i SELECTED", x), x);
+		  	snprintf(strbuf, 256, es_ngettext("%i SELECTED", "%i SELECTED", x), x);
 			mText.setText(strbuf);
 
 			mText.setSize(0, mText.getSize().y());

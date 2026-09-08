@@ -1,83 +1,32 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026-present PortareOS (https://github.com/portare-ch)
+
+#pragma once
 #ifndef _LOCALE_H_
 #define _LOCALE_H_
 
-
-#if !defined(WIN32)
-
 #include <string>
 
-#ifdef HAVE_INTL
-
-#define ENABLE_NLS 1
-#include "gettext.h"
-#define _(A) std::string(gettext(A))
-
-#else
-
+// The interface is English and only English. There is no gettext, no message
+// catalogues and no runtime language switch.
+//
+// The wrappers stay: thousands of call sites read _("SOMETHING"), and keeping
+// them is what makes the user-facing strings greppable. They are the identity.
+// system.language is a separate thing and still means something: scrapers,
+// LangParser and Genres all read it to pick metadata, not interface text.
 #define _(A) std::string(A)
-
-const char* ngettext(const char* msgid, const char* msgid_plural, unsigned long int n);
-const char* pgettext(const char* context, const char* msgid);
-
-#endif
-
 #define _U(x) x
 
-class EsLocale
-{
-public:
-	static std::string init(std::string locale, std::string path);
-	static std::string changeLocale(const std::string& locale);
-
-	static const bool isRTL();
-private:
-	static std::string default_LANGUAGE;
-};
-
-#else // WIN32
-
-#include <string>
-#include <map>
-#include <functional>
-#include "utils/StringUtil.h"
-
-#define _U(x) Utils::String::convertFromWideString(L ## x)
-
-struct PluralRule
-{
-	std::string key;
-	std::string rule;
-	std::function<int(int n)> evaluate;
-};
+// Not named ngettext/pgettext: glibc declares those itself, returning char*,
+// and something pulls libintl.h in transitively.
+const char* es_ngettext(const char* msgid, const char* msgid_plural, unsigned long int n);
+const char* es_pgettext(const char* context, const char* msgid);
 
 class EsLocale
 {
 public:
-	static const std::string getText(const std::string& text);
-	static const std::string getTextWithContext(const std::string& context, const std::string& text);
-	static const std::string nGetText(const std::string msgid, const std::string msgid_plural, int n);
-
-	static const std::string getLanguage() { return mCurrentLanguage; }
-
-	static const bool isRTL();
-
-	static const void reset() { mCurrentLanguageLoaded = false; }
-
-private:
-	static void checkLocalisationLoaded();
-	static std::map<std::string, std::string> mItems;
-	static std::string mCurrentLanguage;
-	static bool mCurrentLanguageLoaded;
-
-	static PluralRule mPluralRule;
+	// No right-to-left interface without translations to be right-to-left in.
+	static const bool isRTL() { return false; }
 };
 
-#define _U(x) Utils::String::convertFromWideString(L ## x)
-
-#define _(x) EsLocale::getText(x)
-#define ngettext(A, B, C) EsLocale::nGetText(A, B, C).c_str()
-#define pgettext(A, B) EsLocale::getTextWithContext(A, B)
-
-#endif // WIN32
-
-#endif
+#endif // _LOCALE_H_
