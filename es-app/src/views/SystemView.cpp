@@ -716,12 +716,12 @@ void SystemView::onCursorChanged(const CursorState& state)
 					if (getSelected() == CollectionSystemManager::get()->getCustomCollectionsBundle())
 					{
 						int collectionCount = getSelected()->getRootFolder()->getChildren().size();
-						snprintf(strbuf, 256, ngettext("%i COLLECTION", "%i COLLECTIONS", collectionCount), collectionCount);
+						snprintf(strbuf, 256, es_ngettext("%i COLLECTION", "%i COLLECTIONS", collectionCount), collectionCount);
 					}
 					else if (getSelected()->hasPlatformId(PlatformIds::PLATFORM_IGNORE) && !getSelected()->isCollection())
-						snprintf(strbuf, 256, ngettext("%i ITEM", "%i ITEMS", gameCount), gameCount);
+						snprintf(strbuf, 256, es_ngettext("%i ITEM", "%i ITEMS", gameCount), gameCount);
 					else
-						snprintf(strbuf, 256, ngettext("%i GAME", "%i GAMES", gameCount), gameCount);
+						snprintf(strbuf, 256, es_ngettext("%i GAME", "%i GAMES", gameCount), gameCount);
 
 					ss << strbuf;
 					mSystemInfo.setText(ss.str());

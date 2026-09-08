@@ -105,14 +105,14 @@
 #define fake_gettext_uefi_boot                      _("UEFI Boot")
 #define fake_gettext_secure_boot                    _("Secure Boot")
 
-#define fake_gettext_simple_bilinear_simple	pgettext("game_options", "SHARP-BILINEAR-SIMPLE")
-#define fake_gettext_scanlines				pgettext("game_options", "SCANLINES")
-#define fake_gettext_retro					pgettext("game_options", "RETRO")
-#define fake_gettext_enhanced				pgettext("game_options", "ENHANCED")
-#define fake_gettext_curvature				pgettext("game_options", "CURVATURE")
-#define fake_gettext_zfast					pgettext("game_options", "ZFAST")
-#define fake_gettext_flatten_glow			pgettext("game_options", "FLATTEN-GLOW")
-#define fake_gettext_rgascaling				pgettext("game_options", "RGA SCALING")
+#define fake_gettext_simple_bilinear_simple	es_pgettext("game_options", "SHARP-BILINEAR-SIMPLE")
+#define fake_gettext_scanlines				es_pgettext("game_options", "SCANLINES")
+#define fake_gettext_retro					es_pgettext("game_options", "RETRO")
+#define fake_gettext_enhanced				es_pgettext("game_options", "ENHANCED")
+#define fake_gettext_curvature				es_pgettext("game_options", "CURVATURE")
+#define fake_gettext_zfast					es_pgettext("game_options", "ZFAST")
+#define fake_gettext_flatten_glow			es_pgettext("game_options", "FLATTEN-GLOW")
+#define fake_gettext_rgascaling				es_pgettext("game_options", "RGA SCALING")
 
 #define fake_gettext_glvendor		_("VENDOR")
 #define fake_gettext_glvrenderer	_("RENDERER")
@@ -1293,7 +1293,7 @@ void GuiMenu::openSystemSettings()
 	language_choice->add("简体中文", 	     "zh_CN", language == "zh_CN");
 	language_choice->add("正體中文", 	     "zh_TW", language == "zh_TW");
 
-	s->addWithLabel(_("LANGUAGE (REGION)"), language_choice);
+	s->addWithDescription(_("LANGUAGE (REGION)"), _("Language of scraped metadata. The interface is English."), language_choice);
 	s->addSaveFunc([window, language_choice, language, s]
 	{
 		if (language_choice->changed() && SystemConf::getInstance()->set("system.language", language_choice->getSelected()))
@@ -1301,9 +1301,6 @@ void GuiMenu::openSystemSettings()
 			FileSorts::reset();
 			MetaDataList::initMetadata();
 
-#ifdef HAVE_INTL
-			s->setVariable("exitreboot", true);
-#endif
 			s->setVariable("reloadGuiMenu", true);
 		}		
 	});
@@ -2880,43 +2877,43 @@ void GuiMenu::addFeatureItem(Window* window, GuiSettings* settings, const Custom
 			
 	if (feat.preset == "input")
 	{
-		settings->addInputTextConfigRow(pgettext("game_options", feat.name.c_str()), storageName, false);
+		settings->addInputTextConfigRow(es_pgettext("game_options", feat.name.c_str()), storageName, false);
 		return;
 	}
 	
 	if (feat.preset == "password")
 	{
-		settings->addInputTextConfigRow(pgettext("game_options", feat.name.c_str()), storageName, true);
+		settings->addInputTextConfigRow(es_pgettext("game_options", feat.name.c_str()), storageName, true);
 		return;
 	}
 	
 	if (feat.preset == "image")
 	{
-		settings->addFileBrowser(pgettext("game_options", feat.name.c_str()), storageName, GuiFileBrowser::IMAGES);
+		settings->addFileBrowser(es_pgettext("game_options", feat.name.c_str()), storageName, GuiFileBrowser::IMAGES);
 		return;
 	}
 
 	if (feat.preset == "video")
 	{
-		settings->addFileBrowser(pgettext("game_options", feat.name.c_str()), storageName, GuiFileBrowser::VIDEO);
+		settings->addFileBrowser(es_pgettext("game_options", feat.name.c_str()), storageName, GuiFileBrowser::VIDEO);
 		return;
 	}
 
 	if (feat.preset == "folder")
 	{
-		settings->addFileBrowser(pgettext("game_options", feat.name.c_str()), storageName, GuiFileBrowser::DIRECTORY);
+		settings->addFileBrowser(es_pgettext("game_options", feat.name.c_str()), storageName, GuiFileBrowser::DIRECTORY);
 		return;
 	}
 
 	if (feat.preset == "document")
 	{
-		settings->addFileBrowser(pgettext("game_options", feat.name.c_str()), storageName, GuiFileBrowser::MANUALS);
+		settings->addFileBrowser(es_pgettext("game_options", feat.name.c_str()), storageName, GuiFileBrowser::MANUALS);
 		return;
 	}
 
 	if (feat.preset == "files")
 	{
-		settings->addFileBrowser(pgettext("game_options", feat.name.c_str()), storageName, GuiFileBrowser::FILES);
+		settings->addFileBrowser(es_pgettext("game_options", feat.name.c_str()), storageName, GuiFileBrowser::FILES);
 		return;
 	}
 
@@ -2966,9 +2963,9 @@ void GuiMenu::addFeatureItem(Window* window, GuiSettings* settings, const Custom
 		switchComponent->setState(storedValue == "1");
 
 		if (!feat.description.empty())
-			settings->addWithDescription(pgettext("game_options", feat.name.c_str()), pgettext("game_options", feat.description.c_str()), switchComponent);
+			settings->addWithDescription(es_pgettext("game_options", feat.name.c_str()), es_pgettext("game_options", feat.description.c_str()), switchComponent);
 		else
-			settings->addWithLabel(pgettext("game_options", feat.name.c_str()), switchComponent);
+			settings->addWithLabel(es_pgettext("game_options", feat.name.c_str()), switchComponent);
 
 		settings->addSaveFunc([storageName, switchComponent] { SystemConf::getInstance()->set(storageName, switchComponent->getState() ? "1" : ""); });
 		return;
@@ -2982,9 +2979,9 @@ void GuiMenu::addFeatureItem(Window* window, GuiSettings* settings, const Custom
 		switchComponent->setState(storedValue == "1");
 
 		if (!feat.description.empty())
-			settings->addWithDescription(pgettext("game_options", feat.name.c_str()), pgettext("game_options", feat.description.c_str()), switchComponent);
+			settings->addWithDescription(es_pgettext("game_options", feat.name.c_str()), es_pgettext("game_options", feat.description.c_str()), switchComponent);
 		else
-			settings->addWithLabel(pgettext("game_options", feat.name.c_str()), switchComponent);
+			settings->addWithLabel(es_pgettext("game_options", feat.name.c_str()), switchComponent);
 
 		settings->addSaveFunc([storageName, switchComponent] { SystemConf::getInstance()->set(storageName, switchComponent->getAutoState() ? "" : (switchComponent->getState() ? "1" : "0")); });
 		return;
@@ -2996,9 +2993,9 @@ void GuiMenu::addFeatureItem(Window* window, GuiSettings* settings, const Custom
 		switchComponent->setState(storedValue != "0");
 
 		if (!feat.description.empty())
-			settings->addWithDescription(pgettext("game_options", feat.name.c_str()), pgettext("game_options", feat.description.c_str()), switchComponent);
+			settings->addWithDescription(es_pgettext("game_options", feat.name.c_str()), es_pgettext("game_options", feat.description.c_str()), switchComponent);
 		else
-			settings->addWithLabel(pgettext("game_options", feat.name.c_str()), switchComponent);
+			settings->addWithLabel(es_pgettext("game_options", feat.name.c_str()), switchComponent);
 
 		settings->addSaveFunc([storageName, switchComponent] { SystemConf::getInstance()->set(storageName, switchComponent->getState() ? "" : "0"); });
 		return;
@@ -3010,9 +3007,9 @@ void GuiMenu::addFeatureItem(Window* window, GuiSettings* settings, const Custom
 		switchComponent->setState(storedValue != "1");
 
 		if (!feat.description.empty())
-			settings->addWithDescription(pgettext("game_options", feat.name.c_str()), pgettext("game_options", feat.description.c_str()), switchComponent);
+			settings->addWithDescription(es_pgettext("game_options", feat.name.c_str()), es_pgettext("game_options", feat.description.c_str()), switchComponent);
 		else
-			settings->addWithLabel(pgettext("game_options", feat.name.c_str()), switchComponent);
+			settings->addWithLabel(es_pgettext("game_options", feat.name.c_str()), switchComponent);
 
 		settings->addSaveFunc([storageName, switchComponent] { SystemConf::getInstance()->set(storageName, switchComponent->getState() ? "" : "1"); });
 		return;
@@ -3042,9 +3039,9 @@ void GuiMenu::addFeatureItem(Window* window, GuiSettings* settings, const Custom
 		}
 
 		if (!feat.description.empty())
-			settings->addWithDescription(pgettext("game_options", feat.name.c_str()), pgettext("game_options", feat.description.c_str()), sliderComponent);
+			settings->addWithDescription(es_pgettext("game_options", feat.name.c_str()), es_pgettext("game_options", feat.description.c_str()), sliderComponent);
 		else
-			settings->addWithLabel(pgettext("game_options", feat.name.c_str()), sliderComponent);
+			settings->addWithLabel(es_pgettext("game_options", feat.name.c_str()), sliderComponent);
 
 		settings->addSaveFunc([storageName, sliderComponent] { SystemConf::getInstance()->set(storageName, std::to_string(sliderComponent->getValue())); });
 		return;
@@ -3079,9 +3076,9 @@ void GuiMenu::addFeatureItem(Window* window, GuiSettings* settings, const Custom
 
 		// Add the slider to the settings menu
 		if (!feat.description.empty())
-			settings->addWithDescription(pgettext("game_options", feat.name.c_str()), pgettext("game_options", feat.description.c_str()), sliderComponent);
+			settings->addWithDescription(es_pgettext("game_options", feat.name.c_str()), es_pgettext("game_options", feat.description.c_str()), sliderComponent);
 		else
-			settings->addWithLabel(pgettext("game_options", feat.name.c_str()), sliderComponent);
+			settings->addWithLabel(es_pgettext("game_options", feat.name.c_str()), sliderComponent);
 
 		// Save the slider value
 		settings->addSaveFunc([storageName, sliderComponent] {
@@ -3102,7 +3099,7 @@ void GuiMenu::addFeatureItem(Window* window, GuiSettings* settings, const Custom
 		return;
 	}
 
-	auto item = std::make_shared<OptionListComponent<std::string>>(window, pgettext("game_options", feat.name.c_str()));
+	auto item = std::make_shared<OptionListComponent<std::string>>(window, es_pgettext("game_options", feat.name.c_str()));
 
 	if (feat.preset == "shaders" || feat.preset == "shaderset")
 	{
@@ -3117,12 +3114,12 @@ void GuiMenu::addFeatureItem(Window* window, GuiSettings* settings, const Custom
 
 #if !defined(PORTAREOS)
 			for (auto shader : shaders)
-			  item->add(pgettext("game_options", Utils::String::toUpper(shader).c_str()), shader, storedValue == shader);
+			  item->add(es_pgettext("game_options", Utils::String::toUpper(shader).c_str()), shader, storedValue == shader);
 		}
 #else
 			std::string shader;
 			for(std::stringstream ss(Utils::Platform::GetShOutput(R"(/usr/bin/getshaders)")); getline(ss, shader, ','); )
-				item->add(pgettext("game_options", Utils::String::toUpper(shader).c_str()), shader, storedValue == shader);
+				item->add(es_pgettext("game_options", Utils::String::toUpper(shader).c_str()), shader, storedValue == shader);
 #endif
 	}
 	else if (feat.preset == "videofilters")
@@ -3138,12 +3135,12 @@ void GuiMenu::addFeatureItem(Window* window, GuiSettings* settings, const Custom
 
 #if !defined(PORTAREOS)
 			for (auto videofilter : videofilters)
-				item->add(pgettext("game_options", Utils::String::toUpper(videofilter).c_str()), videofilter, storedValue == videofilter);
+				item->add(es_pgettext("game_options", Utils::String::toUpper(videofilter).c_str()), videofilter, storedValue == videofilter);
 		}
 #else
 			std::string videofilter;
 			for(std::stringstream ss(Utils::Platform::GetShOutput(R"(/usr/bin/getfilters)")); getline(ss, videofilter, ','); )
-				item->add(pgettext("game_options", Utils::String::toUpper(videofilter).c_str()), videofilter, storedValue == videofilter);
+				item->add(es_pgettext("game_options", Utils::String::toUpper(videofilter).c_str()), videofilter, storedValue == videofilter);
 #endif
 	}
 	else if (feat.preset == "decorations" || feat.preset == "bezel")
@@ -3198,13 +3195,13 @@ void GuiMenu::addFeatureItem(Window* window, GuiSettings* settings, const Custom
 		item->add(_("AUTO"), "", storedValue.empty() || storedValue == "auto");
 
 		for (auto fval : feat.choices)
-			item->add(pgettext("game_options", fval.name.c_str()), fval.value, storedValue == fval.value);
+			item->add(es_pgettext("game_options", fval.name.c_str()), fval.value, storedValue == fval.value);
 	}
 
 	if (!item->hasSelection())
 		item->selectFirstItem();
 
-	std::string desc = pgettext("game_options", feat.description.c_str());
+	std::string desc = es_pgettext("game_options", feat.description.c_str());
 
 	if (!inheritedValue.empty())
 	{
@@ -3219,9 +3216,9 @@ void GuiMenu::addFeatureItem(Window* window, GuiSettings* settings, const Custom
 	}
 
 	if (!desc.empty())
-		settings->addWithDescription(pgettext("game_options", feat.name.c_str()), desc, item);
+		settings->addWithDescription(es_pgettext("game_options", feat.name.c_str()), desc, item);
 	else
-		settings->addWithLabel(pgettext("game_options", feat.name.c_str()), item);
+		settings->addWithLabel(es_pgettext("game_options", feat.name.c_str()), item);
 
 	settings->addSaveFunc([item, storageName] { SystemConf::getInstance()->set(storageName, item->getSelected()); });
 }
@@ -3241,7 +3238,7 @@ static std::string getFeatureMenuDescription(const std::string& configName, cons
 		std::string storedValue = SystemConf::getInstance()->get(storageName);
 		if (!storedValue.empty())
 		{
-			std::string text = pgettext("game_options", item.name.c_str());
+			std::string text = es_pgettext("game_options", item.name.c_str());
 
 			for (auto ch : item.choices)
 			{
@@ -3290,7 +3287,7 @@ void GuiMenu::addFeatures(const VectorEx<CustomFeature>& features, Window* windo
 		settings->removeLastRowIfGroup();
 
 		if (!group.first.empty())
-			settings->addGroup(pgettext("game_options", group.first.c_str()));
+			settings->addGroup(es_pgettext("game_options", group.first.c_str()));
 		else if (!defaultGroupName.empty())
 		{
 			if (!addDefaultGroupOnlyIfNotFirst || !firstGroup)
@@ -3317,7 +3314,7 @@ void GuiMenu::addFeatures(const VectorEx<CustomFeature>& features, Window* windo
 			auto items = features.where([feat](auto x) { return x.preset != "hidden" && x.submenu == feat.submenu; });
 			if (items.size() > 0)
 			{
-				std::string label = Utils::String::toUpper(pgettext("game_options", feat.submenu.c_str()));
+				std::string label = Utils::String::toUpper(es_pgettext("game_options", feat.submenu.c_str()));
 				std::string description = getFeatureMenuDescription(configName, items);
 
 				std::shared_ptr<MultiLineMenuEntry> entry = std::make_shared<MultiLineMenuEntry>(window, label, description, true);
@@ -3331,7 +3328,7 @@ void GuiMenu::addFeatures(const VectorEx<CustomFeature>& features, Window* windo
 
 				row.makeAcceptInputHandler([window, configName, feat, items, system, emulator, core, settings, entry]
 				{
-					GuiSettings* groupSettings = new GuiSettings(window, pgettext("game_options", feat.submenu.c_str()));
+					GuiSettings* groupSettings = new GuiSettings(window, es_pgettext("game_options", feat.submenu.c_str()));
 
 					for (auto feat : items)
 						addFeatureItem(window, groupSettings, feat, configName, system, emulator, core);
@@ -3355,9 +3352,9 @@ void GuiMenu::addFeatures(const VectorEx<CustomFeature>& features, Window* windo
 				settings->addRow(row);
 
 				/*
-				settings->addEntry(pgettext("game_options", feat.submenu.c_str()), true, [window, configName, feat, items, system, emulator, core]
+				settings->addEntry(es_pgettext("game_options", feat.submenu.c_str()), true, [window, configName, feat, items, system, emulator, core]
 				{
-					GuiSettings* groupSettings = new GuiSettings(window, pgettext("game_options", feat.submenu.c_str()));
+					GuiSettings* groupSettings = new GuiSettings(window, es_pgettext("game_options", feat.submenu.c_str()));
 
 					for (auto feat : items)
 						addFeatureItem(window, groupSettings, feat, configName, system, emulator, core);

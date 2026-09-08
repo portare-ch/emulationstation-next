@@ -614,7 +614,7 @@ void DetailedContainer::updateDetailsForFolder(FolderData* folder)
 		int count = games.size();
 
 		char trstring[2048];
-		snprintf(trstring, 2048, ngettext(
+		snprintf(trstring, 2048, es_ngettext(
 			"This folder contains %i game, including: %s",
 			"This folder contains %i games, including: %s", count), count, desc.c_str());
 
@@ -1415,7 +1415,7 @@ void DetailedContainerHost::updateControls(FileData* file, bool isClearing, int 
 }
 
 /*
-snprintf(trstring, 1024, ngettext(
+snprintf(trstring, 1024, es_ngettext(
 	"This collection contains %i game, including: %s",
 	"This collection contains %i games, including: %s", games_counter), games_counter, games_list.c_str());
 */

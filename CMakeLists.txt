@@ -501,22 +501,6 @@ else()
     endif()
 endif()
 
-if(NOT WIN32)
-	# batocera / i18n
-	# i18n
-	find_program (MSGFMT_EXECUTABLE msgfmt)
-	find_program (MSGMERGE_EXECUTABLE msgmerge)
-	find_program (XGETTEXT_EXECUTABLE xgettext)
-	find_package(Intl)
-
-	if(MSGFMT_EXECUTABLE AND MSGMERGE_EXECUTABLE AND XGETTEXT_EXECUTABLE AND Intl_FOUND)
-	  message (STATUS "Native language support enabled.")
-	  add_definitions(-DHAVE_INTL)
-	else()
-	  message (STATUS "Native language support disabled.")
-	endif()
-endif()
-
 find_program (PYTHON3_EXECUTABLE python3)
 if(PYTHON3_EXECUTABLE AND NOT MSVC)
   add_custom_target (checkgamesdb ALL COMMENT "Checking guns and wheels games db.")
@@ -545,8 +529,4 @@ set(LIBRARY_OUTPUT_PATH ${dir} CACHE PATH "Build directory" FORCE)
 add_subdirectory("external")
 add_subdirectory("es-core")
 add_subdirectory("es-app")
-
-if(MSGFMT_EXECUTABLE AND MSGMERGE_EXECUTABLE AND XGETTEXT_EXECUTABLE AND Intl_FOUND)
-  add_subdirectory (locale)
-endif()
 
