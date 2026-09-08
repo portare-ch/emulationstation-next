@@ -1293,7 +1293,7 @@ void GuiMenu::openSystemSettings()
 	language_choice->add("简体中文", 	     "zh_CN", language == "zh_CN");
 	language_choice->add("正體中文", 	     "zh_TW", language == "zh_TW");
 
-	s->addWithLabel(_("LANGUAGE (REGION)"), language_choice);
+	s->addWithDescription(_("LANGUAGE (REGION)"), _("Language of scraped metadata. The interface is English."), language_choice);
 	s->addSaveFunc([window, language_choice, language, s]
 	{
 		if (language_choice->changed() && SystemConf::getInstance()->set("system.language", language_choice->getSelected()))
@@ -1301,9 +1301,6 @@ void GuiMenu::openSystemSettings()
 			FileSorts::reset();
 			MetaDataList::initMetadata();
 
-#ifdef HAVE_INTL
-			s->setVariable("exitreboot", true);
-#endif
 			s->setVariable("reloadGuiMenu", true);
 		}		
 	});
