@@ -17,8 +17,10 @@
 #define _(A) std::string(A)
 #define _U(x) x
 
-const char* ngettext(const char* msgid, const char* msgid_plural, unsigned long int n);
-const char* pgettext(const char* context, const char* msgid);
+// Not named ngettext/pgettext: glibc declares those itself, returning char*,
+// and something pulls libintl.h in transitively.
+const char* es_ngettext(const char* msgid, const char* msgid_plural, unsigned long int n);
+const char* es_pgettext(const char* context, const char* msgid);
 
 class EsLocale
 {

@@ -591,7 +591,7 @@ void SystemData::createGroupedSystems()
 
 					games_counter = childSystem->getGameCountInfo()->totalGames;
 
-					snprintf(trstring, 1024, ngettext(
+					snprintf(trstring, 1024, es_ngettext(
 						"This collection contains %i game: %s",
 						"This collection contains %i games, including: %s", games_counter), games_counter, games_list.c_str());
 
