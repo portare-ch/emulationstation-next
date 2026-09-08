@@ -9,7 +9,7 @@
 #include <nanosvg/nanosvgrast.h>
 #include <string.h>
 #include <algorithm>
-#include <vlc/vlc.h>
+#include <mpv/client.h>
 
 #include "Settings.h"
 #include "utils/ZipFile.h"
@@ -302,10 +302,6 @@ bool TextureData::updateFromExternalRGBA(unsigned char* dataRGBA, size_t width, 
 // Avoid multiple extraction in the same file at the same time
 static Utils::StringListLockType mImageExtractorLock;
 
-#if WIN32
-extern void _checkUpgradedVlcVersion();
-#endif
-
 bool TextureData::loadFromVideo()
 {
 	Utils::StringListLock lock(mImageExtractorLock, mPath);
@@ -327,71 +323,57 @@ bool TextureData::loadFromVideo()
 	{
 		Utils::FileSystem::createDirectory(Utils::FileSystem::getParent(localFile));
 
-		libvlc_instance_t *vlcInstance = nullptr;
-		libvlc_media_t *vlcMedia = nullptr;
-		libvlc_media_player_t *vlcMediaPlayer = nullptr;
-
-		std::vector<std::string> cmdline;
-		cmdline.push_back("--quiet");
-		cmdline.push_back("--rate=1");
-		cmdline.push_back("--video-filter=scene");
-		cmdline.push_back("--intf=dummy");
-		cmdline.push_back("--vout=dummy");
-		cmdline.push_back("--scene-format=jpeg");
-		cmdline.push_back("--scene-ratio=1");
-		cmdline.push_back("--no-video-title-show");
-
-		const char** vlcArgs = new const char*[cmdline.size()];
-
-		for (int i = 0; i < cmdline.size(); i++)
-			vlcArgs[i] = cmdline[i].c_str();
-
-#if WIN32
-		_checkUpgradedVlcVersion();
-#endif
-
-		vlcInstance = libvlc_new(cmdline.size(), vlcArgs);
-		if (vlcInstance == nullptr)
+		// Headless mpv: decode far enough in to be past a fade, then let it
+		// write the frame out itself. The extension picks the format.
+		mpv_handle* mpv = mpv_create();
+		if (mpv == nullptr)
 			return false;
 
-		vlcMedia = libvlc_media_new_path(vlcInstance, Utils::FileSystem::getPreferredPath(mPath).c_str());
-		if (vlcMedia == nullptr)
+		mpv_set_option_string(mpv, "config", "no");
+		mpv_set_option_string(mpv, "terminal", "no");
+		mpv_set_option_string(mpv, "msg-level", "all=no");
+		mpv_set_option_string(mpv, "audio", "no");
+		mpv_set_option_string(mpv, "vo", "null");
+		mpv_set_option_string(mpv, "hwdec", "no");
+		mpv_set_option_string(mpv, "start", "1.5");
+		mpv_set_option_string(mpv, "pause", "yes");
+		mpv_set_option_string(mpv, "keep-open", "yes");
+
+		if (mpv_initialize(mpv) < 0)
 		{
-			libvlc_release(vlcInstance);
+			mpv_terminate_destroy(mpv);
 			return false;
 		}
 
-		libvlc_media_add_option(vlcMedia, ":no-audio");
-		libvlc_media_add_option(vlcMedia, ":start-time=1.5");
-
-		vlcMediaPlayer = libvlc_media_player_new_from_media(vlcMedia);
-		if (vlcMediaPlayer == nullptr)
+		auto videoPath = Utils::FileSystem::getPreferredPath(mPath);
+		const char* load[] = { "loadfile", videoPath.c_str(), nullptr };
+		if (mpv_command(mpv, load) < 0)
 		{
-			libvlc_media_release(vlcMedia);
-			libvlc_release(vlcInstance);
+			mpv_terminate_destroy(mpv);
 			return false;
 		}
 
-		int ms = 1500;
+		// PLAYBACK_RESTART is mpv saying the seek finished and a frame is ready.
+		bool ready = false;
+		for (int n = 0; n < 200 && !ready; n++)
+		{
+			mpv_event* event = mpv_wait_event(mpv, 0.05);
+			if (event == nullptr)
+				break;
 
-		libvlc_media_player_set_rate(vlcMediaPlayer, 1);
-		libvlc_audio_set_mute(vlcMediaPlayer, 1);
-		libvlc_media_player_play(vlcMediaPlayer);
-		libvlc_media_player_set_time(vlcMediaPlayer, ms);
-
-		auto time = libvlc_media_player_get_time(vlcMediaPlayer);
-		int n = 100; // avoid infinite loop
-		while (time <= ms && n > 0) {
-			time = libvlc_media_player_get_time(vlcMediaPlayer);
-			n--;
+			if (event->event_id == MPV_EVENT_PLAYBACK_RESTART)
+				ready = true;
+			else if (event->event_id == MPV_EVENT_END_FILE || event->event_id == MPV_EVENT_SHUTDOWN)
+				break;
 		}
 
-		int result = libvlc_video_take_snapshot(vlcMediaPlayer, 0, localFile.c_str(), 0, 0);
+		if (ready)
+		{
+			const char* shot[] = { "screenshot-to-file", localFile.c_str(), "video", nullptr };
+			mpv_command(mpv, shot);
+		}
 
-		libvlc_media_player_stop(vlcMediaPlayer);
-		libvlc_media_player_release(vlcMediaPlayer);
-		libvlc_media_release(vlcMedia);
-		libvlc_release(vlcInstance);
+		mpv_terminate_destroy(mpv);
 	}
 
 	if (Utils::FileSystem::exists(localFile))

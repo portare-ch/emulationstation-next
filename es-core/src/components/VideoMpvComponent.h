@@ -1,15 +1,14 @@
 #pragma once
-#ifndef ES_CORE_COMPONENTS_VIDEO_VLC_COMPONENT_H
-#define ES_CORE_COMPONENTS_VIDEO_VLC_COMPONENT_H
+#ifndef ES_CORE_COMPONENTS_VIDEO_MPV_COMPONENT_H
+#define ES_CORE_COMPONENTS_VIDEO_MPV_COMPONENT_H
 
 #include "VideoComponent.h"
 #include "ThemeData.h"
 #include "renderers/Renderer.h"
 #include <mutex>
 
-struct libvlc_instance_t;
-struct libvlc_media_t;
-struct libvlc_media_player_t;
+struct mpv_handle;
+struct mpv_render_context;
 
 struct VideoContext 
 {
@@ -44,9 +43,9 @@ struct VideoContext
 };
 
 
-namespace VideoVlcFlags
+namespace VideoMpvFlags
 {
-	enum VideoVlcEffect
+	enum VideoMpvEffect
 	{
 		NONE,
 		BUMP,
@@ -55,7 +54,7 @@ namespace VideoVlcFlags
 	};
 }
 
-class VideoVlcComponent : public VideoComponent
+class VideoMpvComponent : public VideoComponent
 {
 	// Structure that groups together the configuration of the video component
 	struct Configuration
@@ -67,10 +66,8 @@ class VideoVlcComponent : public VideoComponent
 	};
 
 public:
-	static void init();
-
-	VideoVlcComponent(Window* window);
-	virtual ~VideoVlcComponent();
+	VideoMpvComponent(Window* window);
+	virtual ~VideoMpvComponent();
 
 	void render(const Transform4x4f& parentTrans) override;
 
@@ -96,7 +93,7 @@ public:
 	ThemeData::ThemeElement::Property getProperty(const std::string name) override;
 	void setProperty(const std::string name, const ThemeData::ThemeElement::Property& value) override;
 
-	void setEffect(VideoVlcFlags::VideoVlcEffect effect) { mEffect = effect; }
+	void setEffect(VideoMpvFlags::VideoMpvEffect effect) { mEffect = effect; }
 
 	bool getLinearSmooth() { return mLinearSmooth; }
 	void setLinearSmooth(bool value = true) { mLinearSmooth = value; }
@@ -129,15 +126,22 @@ private:
 
 	VideoContext* createContext();
 
+	// Pulls one frame out of mpv into the back surface. Called from update(),
+	// so nothing else can be touching the surfaces while it runs.
+	void readFrame();
+	bool openHandle();
+	void applyMute();
+
 	void onMediaParsed();
 	bool mIsParsing;
+	bool mReachedEnd;
+	bool mHasAudioTrack;
 
 private:
 	void crop(float left, float top, float right, float bot);
 
-	static libvlc_instance_t*		mVLC;
-	libvlc_media_t*					mMedia;
-	libvlc_media_player_t*			mMediaPlayer;
+	mpv_handle*						mMpv;
+	mpv_render_context*				mMpvRender;
 	VideoContext*					mContext;
 	std::shared_ptr<TextureResource> mTexture;
 
@@ -145,7 +149,7 @@ private:
 	std::string					    mSubtitleTmpFile;
 	Renderer::ShaderInfo			mCustomShader;
 
-	VideoVlcFlags::VideoVlcEffect	mEffect;
+	VideoMpvFlags::VideoMpvEffect	mEffect;
 
 	unsigned int					mColorShift;
 	int								mElapsed;
@@ -167,4 +171,4 @@ private:
 	Vector2f mBottomRightCrop;
 };
 
-#endif // ES_CORE_COMPONENTS_VIDEO_VLC_COMPONENT_H
+#endif // ES_CORE_COMPONENTS_VIDEO_MPV_COMPONENT_H

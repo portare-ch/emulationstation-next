@@ -43,10 +43,6 @@ if(WIN32)
 	
 	MESSAGE("-- Destination platform : " ${CMAKE_GENERATOR_PLATFORM})
 
-	if(NOT VLC_VERSION)
-		set(VLC_VERSION 1.0.0)
-	endif()
-
 	if (IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../batocera-emulationstation-win32-dependencies)
 		set(CUSTOM_LIBDIR ${CMAKE_CURRENT_SOURCE_DIR}/../batocera-emulationstation-win32-dependencies)
 	elseif (IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/win32-libs) 
@@ -92,8 +88,8 @@ if(WIN32 AND CUSTOM_LIBDIR)
 	  ${CUSTOM_LIBDIR}/SDL2_mixer/${CUSTOM_PLATFORM}
 	  ${CUSTOM_LIBDIR}/SDL2
 	  ${CUSTOM_LIBDIR}/SDL2/${CUSTOM_PLATFORM}
-	  ${CUSTOM_LIBDIR}/libvlc
-	  ${CUSTOM_LIBDIR}/libvlc/${CUSTOM_PLATFORM}
+	  ${CUSTOM_LIBDIR}/libmpv
+	  ${CUSTOM_LIBDIR}/libmpv/${CUSTOM_PLATFORM}
 	  ${CUSTOM_LIBDIR}/curl/${CUSTOM_PLATFORM}
 	)
 endif()
@@ -218,7 +214,7 @@ find_package(SDL2MIXER REQUIRED)
 # batocera / customisations
 find_package(SDL2 REQUIRED)
 find_package(CURL REQUIRED)
-find_package(VLC REQUIRED)
+find_package(MPV REQUIRED)
 find_package(RapidJSON REQUIRED)
 
 if(NOT WIN32)
@@ -346,7 +342,7 @@ set(COMMON_INCLUDE_DIRS
     # batocera / customisations    
     ${SDL2_INCLUDE_DIR}
     ${CURL_INCLUDE_DIR}
-    ${VLC_INCLUDE_DIR}
+    ${MPV_INCLUDE_DIR}
     ${RAPIDJSON_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/external
     ${CMAKE_CURRENT_SOURCE_DIR}/es-core/src
@@ -432,7 +428,7 @@ set(COMMON_LIBRARIES
     ${SDLMIXER_LIBRARY}
     # batocera / customisations    
     ${CURL_LIBRARIES}
-    ${VLC_LIBRARIES}
+    ${MPV_LIBRARIES}
     pugixml
     nanosvg 
     id3v2lib	

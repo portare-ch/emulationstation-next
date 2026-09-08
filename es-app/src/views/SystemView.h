@@ -21,7 +21,7 @@
 
 class AnimatedImageComponent;
 class SystemData;
-class VideoVlcComponent;
+class VideoMpvComponent;
 
 struct SystemViewData
 {

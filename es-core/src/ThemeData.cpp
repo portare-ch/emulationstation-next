@@ -3,7 +3,7 @@
 #include "components/ImageComponent.h"
 #include "components/TextComponent.h"
 #include "components/NinePatchComponent.h"
-#include "components/VideoVlcComponent.h"
+#include "components/VideoMpvComponent.h"
 #include "components/PostProcessShaderComponent.h"
 #include "components/StackPanelComponent.h"
 #include "components/ClockComponent.h"
@@ -2281,7 +2281,7 @@ GuiComponent* ThemeData::createExtraComponent(Window* window, const ThemeElement
 	else if (elem.type == "ninepatch")
 		comp = new NinePatchComponent(window);
 	else if (elem.type == "video")
-		comp = new VideoVlcComponent(window);
+		comp = new VideoMpvComponent(window);
 	else if (elem.type == "screenshader")
 		comp = new PostProcessShaderComponent(window);
 	else if (elem.type == "stackpanel")
