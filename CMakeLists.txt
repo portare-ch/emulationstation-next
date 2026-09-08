@@ -24,7 +24,6 @@ option(PORTAREOS "Set to ON to enable PORTAREOS specific code" OFF)
 
 option(ENABLE_FILEMANAGER "Set to ON to enable f1 shortcut for filesystem" OFF)
 option(DISABLE_KODI "Set to ON to disable kodi in menu" OFF)
-option(ENABLE_PULSE "Set to ON to enable pulse audio (versus alsa)" OFF)
 option(ENABLE_TTS "Set to ON to enable text to speech" OFF)
 option(USE_SYSTEM_PUGIXML "Set to ON to use system-wide pugixml library" OFF)
 
@@ -218,13 +217,9 @@ find_package(MPV REQUIRED)
 find_package(RapidJSON REQUIRED)
 
 if(NOT WIN32)
-	if(ENABLE_PULSE)
-	  MESSAGE("pulse audio enabled")
-	  find_package(PulseAudio REQUIRED)
-	  add_definitions(-D_ENABLE_PULSE_)
-	else()
-	  MESSAGE("pulse audio disabled")
-	endif()
+	# The only audio backend. Volume goes to the graph, and there is no alsa
+	# mixer fallback to fall back to.
+	find_package(PipeWire REQUIRED)
 
 	find_package(udev)
 	if(UDEV_FOUND)
@@ -251,11 +246,6 @@ if(NOT WIN32)
 	else()
 	  MESSAGE("CEC disabled")
 	endif()
-endif()
-
-#add ALSA for Linux
-if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    find_package(ALSA REQUIRED)
 endif()
 
 #-------------------------------------------------------------------------------
@@ -348,9 +338,9 @@ set(COMMON_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/es-core/src
 )
 
-if(ENABLE_PULSE)
+if(NOT WIN32)
  LIST(APPEND COMMON_INCLUDE_DIRS
-    ${PULSEAUDIO_INCLUDE_DIR}
+    ${PIPEWIRE_INCLUDE_DIRS}
       )
 endif()
 
@@ -366,13 +356,6 @@ if(CEC)
       ${libCEC_INCLUDE_DIR}
       )
   endif()
-endif()
-
-#add ALSA for Linux
-if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    LIST(APPEND COMMON_INCLUDE_DIRS
-        ${ALSA_INCLUDE_DIRS}
-    )
 endif()
 
 if(DEFINED BCMHOST)
@@ -441,9 +424,9 @@ if(UDEV_FOUND)
       )
 endif()
 
-if(ENABLE_PULSE)
+if(NOT WIN32)
  LIST(APPEND COMMON_LIBRARIES
-    ${PULSEAUDIO_LIBRARY}
+    ${PIPEWIRE_LIBRARIES}
       )
 endif()
 
@@ -467,13 +450,6 @@ if(CEC)
       ${libCEC_LIBRARIES}
       )
   endif()
-endif()
-
-#add ALSA for Linux
-if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    LIST(APPEND COMMON_LIBRARIES
-        ${ALSA_LIBRARY}
-    )
 endif()
 
 if(DEFINED BCMHOST)

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026-present PortareOS (https://github.com/portare-ch)
+
 #pragma once
 #ifndef ES_CORE_COMPONENTS_VIDEO_MPV_COMPONENT_H
 #define ES_CORE_COMPONENTS_VIDEO_MPV_COMPONENT_H
