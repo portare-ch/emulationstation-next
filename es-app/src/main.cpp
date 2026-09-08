@@ -320,15 +320,8 @@ void onExit()
 
 int setLocale(char * argv1)
 {
-#if WIN32
-	std::locale::global(std::locale("en-US"));
-#else
-	if (Utils::FileSystem::exists("./locale/lang")) // for local builds
-		EsLocale::init("", "./locale/lang");	
-	else
-		EsLocale::init("", "/usr/share/locale");	
-#endif
-
+	// Only the date and time formats follow the environment. Interface text is
+	// English, see LocaleES.h.
 	setlocale(LC_TIME, "");
 
 	return 0;
