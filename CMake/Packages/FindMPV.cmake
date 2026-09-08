@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026-present PortareOS (https://github.com/portare-ch)
+
 # Finds libmpv, the client library of the mpv media player.
 #
 # MPV_FOUND, MPV_INCLUDE_DIR and MPV_LIBRARIES are set, matching the names the

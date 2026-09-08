@@ -44,9 +44,8 @@ jobs:
             libsdl2-dev libsdl2-mixer-dev \
             libfreeimage-dev libfreetype-dev \
             libcurl4-openssl-dev rapidjson-dev \
-            libasound2-dev libpulse-dev \
             libgl1-mesa-dev libgles-dev \
-            libmpv-dev \
+            libmpv-dev libpipewire-0.3-dev \
             libpugixml-dev libudev-dev
 
       # ccache because a full build is thousands of files and most pushes touch
@@ -68,7 +67,6 @@ jobs:
             -DDISABLE_KODI=1 \
             -DENABLE_FILEMANAGER=0 \
             -DCEC=0 \
-            -DENABLE_PULSE=1 \
             -DUSE_SYSTEM_PUGIXML=1 \
             -DGLES3=1
 

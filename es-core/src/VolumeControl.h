@@ -1,48 +1,27 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026-present PortareOS (https://github.com/portare-ch)
+
 #pragma once
 #ifndef ES_APP_VOLUME_CONTROL_H
 #define ES_APP_VOLUME_CONTROL_H
 
 #include <memory>
 
-#if defined (__APPLE__)
-    #error TODO: Not implemented for MacOS yet!!!
-#elif defined(__linux__)
-	#include <unistd.h>
-	#include <fcntl.h>
-	#include <alsa/asoundlib.h>
-#elif defined(WIN32) || defined(_WIN32)
-	#include <Windows.h>
-	#include <endpointvolume.h>
-	#include <mmeapi.h>
-#endif
-
 /*!
 Singleton pattern. Call getInstance() to get an object.
+
+Volume goes to pipewire and nowhere else: no alsa mixer, no pulse, and no
+other platform. See VolumeControl.cpp for how the sink is found.
 */
 class VolumeControl
 {
-#if defined (__APPLE__)
-    #error TODO: Not implemented for MacOS yet!!!
-#elif defined(__linux__)
-    static std::string mixerName;
-    static std::string mixerCard;
-    int mixerIndex;
-    snd_mixer_t* mixerHandle;
-    snd_mixer_elem_t* mixerElem;
-    snd_mixer_selem_id_t* mixerSelemId;
-#elif defined(WIN32) || defined(_WIN32)
-	HMIXER mixerHandle;
-	MIXERCONTROL mixerControl;
-	IAudioEndpointVolume * endpointVolume;
-#endif
-	
 	int internalVolume;
 
 	static std::weak_ptr<VolumeControl> sInstance;
 
 	VolumeControl();
 	VolumeControl(const VolumeControl & right);
-    VolumeControl & operator=(const VolumeControl & right);	
+	VolumeControl & operator=(const VolumeControl & right);
 
 public:
 	static std::shared_ptr<VolumeControl> & getInstance();
