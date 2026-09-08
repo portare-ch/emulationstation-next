@@ -8,39 +8,83 @@
 #include <mmdeviceapi.h>
 #endif
 
-#ifdef _ENABLE_PULSE_
-#include <thread>
-#include <condition_variable>
-#include <pulse/pulseaudio.h>
+#ifdef _ENABLE_PIPEWIRE_
+#include <cmath>
+#include <cstring>
+#include <map>
+#include <string>
+#include <pipewire/pipewire.h>
+#include <spa/param/props.h>
+#include <spa/pod/builder.h>
+#include <spa/pod/parser.h>
+#include <spa/utils/json.h>
 #include "utils/StringUtil.h"
 #include "SystemConf.h"
 
-class PulseAudioControl
+// Volume against pipewire directly rather than through its pulse compatibility
+// layer.
+//
+// Three objects have to be found before anything can be set. The metadata
+// object called "default" says which sink is current, as a node *name*; the
+// registry says which node *id* carries that name; and the node itself holds
+// channelVolumes under SPA_PARAM_Props. The default can change under us, so the
+// registry listener stays subscribed and rebinds when it does.
+//
+// channelVolumes are linear amplitude. The number in the UI is not: pulse, and
+// wireplumber after it, present a cubic curve, so the same 30% has to mean the
+// same loudness it did before or every user's setting quietly changes meaning.
+class PipeWireControl
 {
-#define DEFAULT_SINK_NAME "@DEFAULT_SINK@"
-
 public:
-	PulseAudioControl()
+	PipeWireControl()
 	{
+		mLoop = nullptr;
 		mContext = nullptr;
-    	mMainLoop = nullptr;
+		mCore = nullptr;
+		mRegistry = nullptr;
+		mMetadata = nullptr;
+		mNode = nullptr;
+		mNodeId = SPA_ID_INVALID;
+		mReady = false;
+		mVolume = 100;
 
-	  	mReady   = 0;
-		mMute    = 0;
-		mVolume  = 100;
+		pw_init(nullptr, nullptr);
 
-		mThread = new std::thread(&PulseAudioControl::run, this);
-		WaitEvent();
+		mLoop = pw_thread_loop_new("es-volume", nullptr);
+		if (mLoop == nullptr)
+			return;
 
-		LOG(LogDebug) << "PulseAudioControl. Ready = " << mReady;
+		pw_thread_loop_lock(mLoop);
+
+		mContext = pw_context_new(pw_thread_loop_get_loop(mLoop), nullptr, 0);
+		if (mContext != nullptr)
+			mCore = pw_context_connect(mContext, nullptr, 0);
+
+		if (mCore != nullptr)
+		{
+			mRegistry = pw_core_get_registry(mCore, PW_VERSION_REGISTRY, 0);
+			if (mRegistry != nullptr)
+			{
+				spa_zero(mRegistryListener);
+				pw_registry_add_listener(mRegistry, &mRegistryListener, &sRegistryEvents, this);
+				mReady = true;
+			}
+		}
+
+		pw_thread_loop_unlock(mLoop);
+
+		if (mReady && pw_thread_loop_start(mLoop) < 0)
+			mReady = false;
+
+		LOG(LogDebug) << "PipeWireControl. Ready = " << mReady;
 	}
 
-	 ~PulseAudioControl()
+	~PipeWireControl()
 	{
 		exit();
 	}
 
-	bool isReady() { return mContext != nullptr && mReady; }
+	bool isReady() { return mReady; }
 
 	int getVolume()
 	{
@@ -49,167 +93,258 @@ public:
 
 	void setVolume(int value, bool setSinkVolume = true)
 	{
-		mVolume = value;
-		
-		if (mContext == nullptr || !setSinkVolume)
+		mVolume = Math::clamp(value, 0, 100);
+
+		if (!mReady || !setSinkVolume)
 			return;
 
-		pa_operation* o = pa_context_get_sink_info_by_name(mContext, DEFAULT_SINK_NAME, set_sink_volume_callback, this);
-      	if (o != NULL)
-			pa_operation_unref(o);
+		pw_thread_loop_lock(mLoop);
+		applyVolume();
+		pw_thread_loop_unlock(mLoop);
 	}
 
 	void exit()
 	{
-		LOG(LogDebug) << "PulseAudioControl.exit";
+		if (mLoop == nullptr)
+			return;
+
+		LOG(LogDebug) << "PipeWireControl.exit";
 
 		mReady = false;
 
-		if(mThread != nullptr) {
-		  if (mMainLoop != nullptr) {
-		    pa_mainloop_quit(mMainLoop, 0);
-		  }
-		  mThread->join();
-		  mThread = nullptr;
-		}
-	}
+		pw_thread_loop_stop(mLoop);
 
-	void run()	
-	{
-		mMainLoop = pa_mainloop_new();
-		pa_mainloop_api* pa_mlapi = pa_mainloop_get_api(mMainLoop);
+		if (mNode != nullptr) { pw_proxy_destroy((pw_proxy*)mNode); mNode = nullptr; }
+		if (mMetadata != nullptr) { pw_proxy_destroy((pw_proxy*)mMetadata); mMetadata = nullptr; }
+		if (mRegistry != nullptr) { pw_proxy_destroy((pw_proxy*)mRegistry); mRegistry = nullptr; }
+		if (mCore != nullptr) { pw_core_disconnect(mCore); mCore = nullptr; }
+		if (mContext != nullptr) { pw_context_destroy(mContext); mContext = nullptr; }
 
-  		pa_signal_init(pa_mlapi);
-
-		mContext = pa_context_new(pa_mlapi, "EmulationStation");
-
-		pa_context_set_state_callback(mContext, context_state_callback, this);
-		pa_context_connect(mContext, nullptr, pa_context_flags::PA_CONTEXT_NOFLAGS, nullptr);
-
-		int result = 0;
-		pa_mainloop_run(mMainLoop, &result);
-
-		pa_context_unref(mContext);
-		pa_mainloop_free(mMainLoop);
-		mMainLoop = nullptr;
-
-		LOG(LogDebug) << "PulseAudioControl End Mainloop";
+		pw_thread_loop_destroy(mLoop);
+		mLoop = nullptr;
 	}
 
 private:
-	static void quit(void* userdata, int code)
+	// The loop is already locked by every caller below.
+	void applyVolume()
 	{
-		PulseAudioControl* pThis = (PulseAudioControl*)userdata;
+		if (mNode == nullptr)
+			return;
+
+		float linear = (float)std::pow(mVolume / 100.0, 3.0);
+
+		float volumes[SPA_AUDIO_MAX_CHANNELS];
+		uint32_t channels = mChannels > 0 ? mChannels : 2;
+		if (channels > SPA_AUDIO_MAX_CHANNELS)
+			channels = SPA_AUDIO_MAX_CHANNELS;
+
+		for (uint32_t i = 0; i < channels; i++)
+			volumes[i] = linear;
+
+		uint8_t buffer[1024];
+		spa_pod_builder b = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
+
+		spa_pod_frame f;
+		spa_pod_builder_push_object(&b, &f, SPA_TYPE_OBJECT_Props, SPA_PARAM_Props);
+		spa_pod_builder_prop(&b, SPA_PROP_channelVolumes, 0);
+		spa_pod_builder_array(&b, sizeof(float), SPA_TYPE_Float, channels, volumes);
+		spa_pod* pod = (spa_pod*)spa_pod_builder_pop(&b, &f);
+
+		pw_node_set_param(mNode, SPA_PARAM_Props, 0, pod);
+		pw_core_sync(mCore, PW_ID_CORE, 0);
 	}
 
-	static void simple_callback(pa_context *c, int success, void *userdata) 
+	void bindDefaultSink(uint32_t id)
 	{
-  		if (!success) 
+		if (mNode != nullptr)
 		{
-			LOG(LogError) << "PulseAudioControl Failure : " << pa_strerror(pa_context_errno(c));    		
-			quit(userdata, 1);
-  		}
+			pw_proxy_destroy((pw_proxy*)mNode);
+			mNode = nullptr;
+		}
+
+		mNodeId = id;
+		mNode = (pw_node*)pw_registry_bind(mRegistry, id, PW_TYPE_INTERFACE_Node, PW_VERSION_NODE, 0);
+		if (mNode == nullptr)
+			return;
+
+		spa_zero(mNodeListener);
+		pw_node_add_listener(mNode, &mNodeListener, &sNodeEvents, this);
+
+		uint32_t ids[] = { SPA_PARAM_Props };
+		pw_node_subscribe_params(mNode, ids, 1);
 	}
 
-	static void get_sink_volume_callback(pa_context *c, const pa_sink_info *i, int is_last, void *userdata) 
+	// A sink is only interesting once its name matches what the metadata says
+	// is default. Either can arrive first, so both paths end up here.
+	void considerSink(uint32_t id, const char* name)
 	{
-		PulseAudioControl* pThis = (PulseAudioControl*)userdata;
+		if (name == nullptr)
+			return;
 
-		int channel = 0;
+		mSinks[id] = name;
 
-		if (is_last == 0)
+		if (!mDefaultSink.empty() && mDefaultSink == name && mNodeId != id)
+			bindDefaultSink(id);
+	}
+
+	void onDefaultSinkChanged(const std::string& name)
+	{
+		mDefaultSink = name;
+
+		for (auto& sink : mSinks)
 		{
-			pThis->mMute = i->mute;
-			pThis->mVolume = (unsigned)(((uint64_t) i->volume.values[channel] * 100 + (uint64_t)PA_VOLUME_NORM / 2) / (uint64_t)PA_VOLUME_NORM);		
+			if (sink.second == name && mNodeId != sink.first)
+			{
+				bindDefaultSink(sink.first);
+				return;
+			}
 		}
 	}
 
-	static void set_sink_volume_callback(pa_context *c, const pa_sink_info *i, int is_last, void *userdata) 
+	static void registry_global(void* data, uint32_t id, uint32_t /*permissions*/,
+		const char* type, uint32_t /*version*/, const spa_dict* props)
 	{
-		PulseAudioControl* pThis = (PulseAudioControl*)userdata;
+		PipeWireControl* pThis = (PipeWireControl*)data;
 
-		pa_cvolume cv;
+		if (props == nullptr || type == nullptr)
+			return;
 
-		if (is_last == 0)
-		{	
-			pa_cvolume_set(&cv, i->channel_map.channels, (pa_volume_t) (pThis->mVolume * (double) PA_VOLUME_NORM / 100));
-			pa_operation_unref(pa_context_set_sink_volume_by_name(c, DEFAULT_SINK_NAME, &cv, simple_callback, NULL));
+		if (strcmp(type, PW_TYPE_INTERFACE_Node) == 0)
+		{
+			const char* mediaClass = spa_dict_lookup(props, PW_KEY_MEDIA_CLASS);
+			if (mediaClass != nullptr && strcmp(mediaClass, "Audio/Sink") == 0)
+				pThis->considerSink(id, spa_dict_lookup(props, PW_KEY_NODE_NAME));
+		}
+		else if (strcmp(type, PW_TYPE_INTERFACE_Metadata) == 0 && pThis->mMetadata == nullptr)
+		{
+			const char* name = spa_dict_lookup(props, PW_KEY_METADATA_NAME);
+			if (name == nullptr || strcmp(name, "default") != 0)
+				return;
+
+			pThis->mMetadata = (pw_metadata*)pw_registry_bind(pThis->mRegistry, id,
+				PW_TYPE_INTERFACE_Metadata, PW_VERSION_METADATA, 0);
+
+			if (pThis->mMetadata != nullptr)
+			{
+				spa_zero(pThis->mMetadataListener);
+				pw_metadata_add_listener(pThis->mMetadata, &pThis->mMetadataListener, &sMetadataEvents, pThis);
+			}
 		}
 	}
 
-	static void subscribe_callback(pa_context *c, pa_subscription_event_type_t type, uint32_t idx, void *userdata) 
-	{		
-		unsigned facility = type & PA_SUBSCRIPTION_EVENT_FACILITY_MASK;
-		pa_operation *o = NULL;
-
-		switch (facility) {
-		case PA_SUBSCRIPTION_EVENT_SINK:
-			if( (o = pa_context_get_sink_info_by_name(c, DEFAULT_SINK_NAME, get_sink_volume_callback, userdata)) != NULL) pa_operation_unref(o);
-			break;
-		}
-	}
-
-	static void context_state_callback(pa_context *c, void *userdata) 
+	static void registry_global_remove(void* data, uint32_t id)
 	{
-		PulseAudioControl* pThis = (PulseAudioControl*)userdata;
+		PipeWireControl* pThis = (PipeWireControl*)data;
 
-		switch (pa_context_get_state(c)) {
-		case PA_CONTEXT_CONNECTING:
-		case PA_CONTEXT_AUTHORIZING:
-		case PA_CONTEXT_SETTING_NAME:
-			break;
+		pThis->mSinks.erase(id);
 
-		case PA_CONTEXT_READY:
-			LOG(LogDebug) << "PulseAudioControl Ready";
-
- 			pa_context_set_subscribe_callback(c, subscribe_callback, userdata);
-    		pa_context_subscribe(c, PA_SUBSCRIPTION_MASK_SINK, NULL, NULL);
-
-			pThis->mReady = 1;
-			pThis->FireEvent();
-			break;
-
-		case PA_CONTEXT_TERMINATED:
-			LOG(LogDebug) << "PulseAudioControl Context terminated";    		
-			pThis->mReady = 0;
-			break;
-
-		case PA_CONTEXT_FAILED:
-		default:
-			LOG(LogError) << "PulseAudioControl Connection failure : " << pa_strerror(pa_context_errno(c));    		
-			pThis->mReady = 0;
-			pThis->FireEvent();
-
-			quit(userdata, 1);
+		if (pThis->mNodeId == id && pThis->mNode != nullptr)
+		{
+			pw_proxy_destroy((pw_proxy*)pThis->mNode);
+			pThis->mNode = nullptr;
+			pThis->mNodeId = SPA_ID_INVALID;
 		}
+	}
+
+	// default.audio.sink arrives as {"name":"<node.name>"}.
+	static int metadata_property(void* data, uint32_t /*subject*/, const char* key,
+		const char* /*type*/, const char* value)
+	{
+		PipeWireControl* pThis = (PipeWireControl*)data;
+
+		if (key == nullptr || value == nullptr || strcmp(key, "default.audio.sink") != 0)
+			return 0;
+
+		spa_json it[2];
+		char name[256] = { 0 };
+
+		if (spa_json_begin_object(&it[0], value, strlen(value)) <= 0)
+			return 0;
+
+		char k[128];
+		while (spa_json_get_string(&it[0], k, sizeof(k)) > 0)
+		{
+			if (strcmp(k, "name") == 0)
+			{
+				if (spa_json_get_string(&it[0], name, sizeof(name)) > 0)
+					pThis->onDefaultSinkChanged(name);
+
+				break;
+			}
+
+			if (spa_json_next(&it[0], &value) <= 0)
+				break;
+		}
+
+		return 0;
+	}
+
+	static void node_param(void* data, int /*seq*/, uint32_t id, uint32_t /*index*/,
+		uint32_t /*next*/, const spa_pod* param)
+	{
+		PipeWireControl* pThis = (PipeWireControl*)data;
+
+		if (param == nullptr || id != SPA_PARAM_Props)
+			return;
+
+		const spa_pod* value = spa_pod_find_prop(param, nullptr, SPA_PROP_channelVolumes);
+		if (value == nullptr)
+			return;
+
+		float volumes[SPA_AUDIO_MAX_CHANNELS];
+		uint32_t n = spa_pod_copy_array(&((const spa_pod_prop*)value)->value,
+			SPA_TYPE_Float, volumes, SPA_AUDIO_MAX_CHANNELS);
+
+		if (n == 0)
+			return;
+
+		pThis->mChannels = n;
+		pThis->mVolume = (int)std::lround(std::cbrt((double)volumes[0]) * 100.0);
 	}
 
 private:
-	int mReady;
-	int mMute;
-	int mVolume;
+	pw_thread_loop*	mLoop;
+	pw_context*		mContext;
+	pw_core*		mCore;
+	pw_registry*	mRegistry;
+	pw_metadata*	mMetadata;
+	pw_node*		mNode;
 
-	void FireEvent()
-	{
-		mEvent.notify_one();
-	}
+	spa_hook		mRegistryListener;
+	spa_hook		mMetadataListener;
+	spa_hook		mNodeListener;
 
-	void WaitEvent()
-	{
-		std::unique_lock<std::mutex> lock(mLock);
-		mEvent.wait(lock);
-	}
+	uint32_t		mNodeId;
+	uint32_t		mChannels = 0;
+	std::string		mDefaultSink;
+	std::map<uint32_t, std::string> mSinks;
 
-	std::thread*	mThread;
+	bool			mReady;
+	int				mVolume;
 
-	std::mutex					mLock;
-	std::condition_variable		mEvent;		
-
-	pa_context* 	mContext;
-    pa_mainloop* 	mMainLoop;
+	static const pw_registry_events	sRegistryEvents;
+	static const pw_metadata_events	sMetadataEvents;
+	static const pw_node_events		sNodeEvents;
 };
 
-static PulseAudioControl PulseAudio;
+const pw_registry_events PipeWireControl::sRegistryEvents = {
+	PW_VERSION_REGISTRY_EVENTS,
+	PipeWireControl::registry_global,
+	PipeWireControl::registry_global_remove,
+};
+
+const pw_metadata_events PipeWireControl::sMetadataEvents = {
+	PW_VERSION_METADATA_EVENTS,
+	PipeWireControl::metadata_property,
+};
+
+const pw_node_events PipeWireControl::sNodeEvents = {
+	PW_VERSION_NODE_EVENTS,
+	nullptr,
+	PipeWireControl::node_param,
+};
+
+static PipeWireControl PipeWire;
 
 #endif
 
@@ -240,9 +375,9 @@ VolumeControl::VolumeControl()
 
 VolumeControl::~VolumeControl()
 {
-#ifdef _ENABLE_PULSE_
-	if (PulseAudio.isReady())
-		PulseAudio.exit();
+#ifdef _ENABLE_PIPEWIRE_
+	if (PipeWire.isReady())
+		PipeWire.exit();
 #endif
 
 	deinit();
@@ -266,10 +401,10 @@ void VolumeControl::init()
 	#error TODO: Not implemented for MacOS yet!!!
 #elif defined(__linux__)
 
-#ifdef _ENABLE_PULSE_
+#ifdef _ENABLE_PIPEWIRE_
 	// Read initial volume from systemconf
 	std::string volume = SystemConf::getInstance()->get("audio.volume");
-	PulseAudio.setVolume(volume.empty() ? 100 : Utils::String::toInteger(volume), false);
+	PipeWire.setVolume(volume.empty() ? 100 : Utils::String::toInteger(volume), false);
 	return;
 #endif
 
@@ -457,7 +592,7 @@ void VolumeControl::deinit()
 	#error TODO: Not implemented for MacOS yet!!!
 #elif defined(__linux__)
 
-#ifdef _ENABLE_PULSE_
+#ifdef _ENABLE_PIPEWIRE_
 	return;
 #endif
 
@@ -489,8 +624,8 @@ int VolumeControl::getVolume() const
 	#error TODO: Not implemented for MacOS yet!!!
 #elif defined(__linux__)
 
-#ifdef _ENABLE_PULSE_
-	return PulseAudio.getVolume();	
+#ifdef _ENABLE_PIPEWIRE_
+	return PipeWire.getVolume();	
 #endif
 
 	if (mixerElem != nullptr)
@@ -590,10 +725,10 @@ void VolumeControl::setVolume(int volume)
 	#error TODO: Not implemented for MacOS yet!!!
 #elif defined(__linux__)
 
-#ifdef _ENABLE_PULSE_
-	if (PulseAudio.isReady())
+#ifdef _ENABLE_PIPEWIRE_
+	if (PipeWire.isReady())
 	{
-		PulseAudio.setVolume(volume);
+		PipeWire.setVolume(volume);
 	}
 	return;
 #endif
@@ -657,8 +792,8 @@ bool VolumeControl::isAvailable()
 	return false;
 #elif defined(__linux__)
 
-#ifdef _ENABLE_PULSE_
-	return PulseAudio.isReady();
+#ifdef _ENABLE_PIPEWIRE_
+	return PipeWire.isReady();
 #endif
 
 	return mixerHandle != nullptr && mixerElem != nullptr;
