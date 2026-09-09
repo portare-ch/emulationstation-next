@@ -95,7 +95,10 @@ jobs:
           test -f "${MPV}/include/mpv/client.h"
           test -f "${MPV}/include/mpv/render.h"
 
-          echo "PINNED_INCLUDES=-isystem ${PW}/src -isystem ${PW}/spa/include -isystem ${MPV}/include" >> "${GITHUB_ENV}"
+          # -I, not -isystem: gcc searches every -I directory before any
+          # -isystem one, so -isystem would lose to the -I that pkg-config
+          # gives cmake for apt's headers no matter what order they appear in.
+          echo "PINNED_INCLUDES=-I${PW}/src -I${PW}/spa/include -I${MPV}/include" >> "${GITHUB_ENV}"
           echo "pipewire ${PIPEWIRE_VERSION} and mpv ${MPV_VERSION} headers in place"
 
       - name: ccache
