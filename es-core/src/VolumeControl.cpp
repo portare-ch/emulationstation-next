@@ -16,7 +16,6 @@
 #include <spa/param/props.h>
 #include <spa/param/audio/raw.h>
 #include <spa/pod/builder.h>
-#include <spa/pod/iter.h>
 #include <spa/pod/parser.h>
 #include <spa/utils/json.h>
 #include "utils/StringUtil.h"
