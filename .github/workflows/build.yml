@@ -14,6 +14,13 @@ name: Build
 # The flags match projects/PortareOS/packages/ui/emulationstation/package.mk,
 # so the code paths compiled here are the ones that ship. Changing them there
 # without changing them here means CI stops covering what we build.
+#
+# The same applies to library versions, and used not to. apt ships older
+# pipewire and mpv than the distribution pins, their headers differ, and a
+# green run here once shipped a build failure into the image: spa/pod/iter.h
+# arrived transitively on 1.0.x and stopped on 1.6.x. Those two headers are
+# now taken from the pinned versions instead. SDL and the rest are still
+# apt's, so this narrows the gap rather than closing it.
 
 on:
   push:
@@ -36,6 +43,16 @@ jobs:
         with:
           submodules: recursive
 
+      # The versions the distribution pins, in
+      # projects/PortareOS/packages/. apt ships older ones, and their headers
+      # differ: spa/pod/iter.h reached us transitively on 1.0.x and stopped on
+      # 1.6.x, which is how a green run here shipped a build failure into the
+      # image. Bump these when the recipes there move.
+      - name: Pinned header versions
+        run: |
+          echo "PIPEWIRE_VERSION=1.6.8" >> "${GITHUB_ENV}"
+          echo "MPV_VERSION=0.41.0" >> "${GITHUB_ENV}"
+
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
@@ -51,6 +68,36 @@ jobs:
       # ccache because a full build is thousands of files and most pushes touch
       # a handful. The key rotates per run so each build starts from the newest
       # cache and writes its own; restore-keys is what actually reuses it.
+      # Headers only, laid over the ones apt installed. Linking still uses
+      # apt's libraries, which is sound because the functions this frontend
+      # calls are stable across these ranges; what is not stable, and what
+      # this covers, is which header declares them.
+      #
+      # This does not make the run equivalent to an image build. SDL and the
+      # rest are still apt's. It closes the two that move fastest and that we
+      # call newest.
+      - name: Fetch pinned pipewire and mpv headers
+        run: |
+          mkdir -p "${RUNNER_TEMP}/pinned"
+          cd "${RUNNER_TEMP}/pinned"
+
+          curl -sSL "https://github.com/PipeWire/pipewire/archive/${PIPEWIRE_VERSION}.tar.gz" | tar xz
+          curl -sSL "https://github.com/mpv-player/mpv/archive/v${MPV_VERSION}.tar.gz" | tar xz
+
+          PW="${RUNNER_TEMP}/pinned/pipewire-${PIPEWIRE_VERSION}"
+          MPV="${RUNNER_TEMP}/pinned/mpv-${MPV_VERSION}"
+
+          # Fail here rather than three thousand files into the build if a
+          # tarball ever moves its headers.
+          test -f "${PW}/src/pipewire/pipewire.h"
+          test -f "${PW}/src/pipewire/extensions/metadata.h"
+          test -f "${PW}/spa/include/spa/pod/iter.h"
+          test -f "${MPV}/include/mpv/client.h"
+          test -f "${MPV}/include/mpv/render.h"
+
+          echo "PINNED_INCLUDES=-isystem ${PW}/src -isystem ${PW}/spa/include -isystem ${MPV}/include" >> "${GITHUB_ENV}"
+          echo "pipewire ${PIPEWIRE_VERSION} and mpv ${MPV_VERSION} headers in place"
+
       - name: ccache
         uses: hendrikmuhs/ccache-action@v1
         with:
@@ -61,6 +108,8 @@ jobs:
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS="${PINNED_INCLUDES}" \
+            -DCMAKE_CXX_FLAGS="${PINNED_INCLUDES}" \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DPORTAREOS=1 \
