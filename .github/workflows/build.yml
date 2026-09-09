@@ -11,6 +11,11 @@ name: Build
 # QEMU. It is the only architecture this fork targets, so it is the only one
 # worth spending a runner on.
 #
+# CMAKE_POLICY_VERSION_MINIMUM below is for external/id3v2lib, which asks for
+# cmake_minimum_required(VERSION 3.1...3.22). CMake 4, which 26.04 ships,
+# refuses anything under 3.5. The distribution passes the same flag to
+# dolphin-sa for the same reason.
+#
 # The flags match projects/PortareOS/packages/ui/emulationstation/package.mk,
 # so the code paths compiled here are the ones that ship. Changing them there
 # without changing them here means CI stops covering what we build.
@@ -35,7 +40,15 @@ concurrency:
 jobs:
   build:
     name: aarch64
-    runs-on: ubuntu-24.04-arm
+    # 26.04 for its compiler, not its packages: its default gcc is 15.2.0,
+    # which is exactly what projects/PortareOS/packages/lang/gcc builds for
+    # the image. 24.04 stops at 14.2.0, so until now the gate compiled with a
+    # different major version than the thing it was gating.
+    #
+    # The image is marked preview by GitHub. If a run fails for something that
+    # has nothing to do with this repository, that is the first thing to
+    # suspect, and ubuntu-24.04-arm is the way back.
+    runs-on: ubuntu-26.04-arm
     timeout-minutes: 45
 
     steps:
@@ -158,6 +171,7 @@ jobs:
             -DENABLE_FILEMANAGER=0 \
             -DCEC=0 \
             -DUSE_SYSTEM_PUGIXML=1 \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DGLES3=1
 
       - name: Build
