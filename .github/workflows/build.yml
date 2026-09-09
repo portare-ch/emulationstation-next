@@ -86,6 +86,7 @@ jobs:
 
           PW="${RUNNER_TEMP}/pinned/pipewire-${PIPEWIRE_VERSION}"
           MPV="${RUNNER_TEMP}/pinned/mpv-${MPV_VERSION}"
+          PREFIX="${RUNNER_TEMP}/pinned/prefix"
 
           # Fail here rather than three thousand files into the build if a
           # tarball ever moves its headers.
@@ -95,11 +96,38 @@ jobs:
           test -f "${MPV}/include/mpv/client.h"
           test -f "${MPV}/include/mpv/render.h"
 
-          # -I, not -isystem: gcc searches every -I directory before any
-          # -isystem one, so -isystem would lose to the -I that pkg-config
-          # gives cmake for apt's headers no matter what order they appear in.
-          echo "PINNED_INCLUDES=-I${PW}/src -I${PW}/spa/include -I${MPV}/include" >> "${GITHUB_ENV}"
-          echo "pipewire ${PIPEWIRE_VERSION} and mpv ${MPV_VERSION} headers in place"
+          mkdir -p "${PREFIX}/include" "${PREFIX}/lib/pkgconfig"
+          cp -r "${PW}/src/pipewire"      "${PREFIX}/include/"
+          cp -r "${PW}/spa/include/spa"   "${PREFIX}/include/"
+          cp -r "${MPV}/include/mpv"      "${PREFIX}/include/"
+
+          # pkg-config, not compiler flags. cmake emits <INCLUDES> before
+          # <FLAGS>, so anything added through CMAKE_CXX_FLAGS lands after the
+          # -I that pkg-config already gave it for apt's headers and never
+          # wins. Overriding the .pc files is what the Find modules actually
+          # read. Libs still point at apt's runtime, which holds because the
+          # functions called here are stable across these ranges.
+          cat > "${PREFIX}/lib/pkgconfig/libpipewire-0.3.pc" <<EOF
+          Name: libpipewire
+          Description: pinned headers, apt runtime
+          Version: ${PIPEWIRE_VERSION}
+          Cflags: -I${PREFIX}/include
+          Libs: -lpipewire-0.3
+          EOF
+          cat > "${PREFIX}/lib/pkgconfig/mpv.pc" <<EOF
+          Name: mpv
+          Description: pinned headers, apt runtime
+          Version: ${MPV_VERSION}
+          Cflags: -I${PREFIX}/include
+          Libs: -lmpv
+          EOF
+          sed -i 's/^ *//' "${PREFIX}/lib/pkgconfig/"*.pc
+
+          echo "PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig" >> "${GITHUB_ENV}"
+          echo "PINNED_PREFIX=${PREFIX}" >> "${GITHUB_ENV}"
+
+          pkg-config --cflags libpipewire-0.3
+          pkg-config --modversion libpipewire-0.3 mpv
 
       - name: ccache
         uses: hendrikmuhs/ccache-action@v1
@@ -111,8 +139,7 @@ jobs:
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_FLAGS="${PINNED_INCLUDES}" \
-            -DCMAKE_CXX_FLAGS="${PINNED_INCLUDES}" \
+            -DCMAKE_PREFIX_PATH="${PINNED_PREFIX}" \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DPORTAREOS=1 \
