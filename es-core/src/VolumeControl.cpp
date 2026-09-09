@@ -9,6 +9,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <cerrno>
 #include <map>
 #include <string>
 #include <pipewire/pipewire.h>
@@ -53,18 +54,39 @@ public:
 
 		mLoop = pw_thread_loop_new("es-volume", nullptr);
 		if (mLoop == nullptr)
+		{
+			LOG(LogError) << "PipeWireControl: pw_thread_loop_new failed";
 			return;
+		}
+
+		// Start before connecting, not after. pw_context_connect needs the
+		// loop iterating to complete its handshake, and with the loop stopped
+		// it returns null, which is how volume ended up permanently
+		// unavailable while playback itself was fine.
+		if (pw_thread_loop_start(mLoop) < 0)
+		{
+			LOG(LogError) << "PipeWireControl: pw_thread_loop_start failed";
+			return;
+		}
 
 		pw_thread_loop_lock(mLoop);
 
 		mContext = pw_context_new(pw_thread_loop_get_loop(mLoop), nullptr, 0);
-		if (mContext != nullptr)
+		if (mContext == nullptr)
+			LOG(LogError) << "PipeWireControl: pw_context_new failed";
+		else
+		{
 			mCore = pw_context_connect(mContext, nullptr, 0);
+			if (mCore == nullptr)
+				LOG(LogError) << "PipeWireControl: pw_context_connect failed: " << strerror(errno);
+		}
 
 		if (mCore != nullptr)
 		{
 			mRegistry = pw_core_get_registry(mCore, PW_VERSION_REGISTRY, 0);
-			if (mRegistry != nullptr)
+			if (mRegistry == nullptr)
+				LOG(LogError) << "PipeWireControl: pw_core_get_registry failed";
+			else
 			{
 				spa_zero(mRegistryListener);
 				pw_registry_add_listener(mRegistry, &mRegistryListener, &sRegistryEvents, this);
@@ -74,10 +96,7 @@ public:
 
 		pw_thread_loop_unlock(mLoop);
 
-		if (mReady && pw_thread_loop_start(mLoop) < 0)
-			mReady = false;
-
-		LOG(LogDebug) << "PipeWireControl. Ready = " << mReady;
+		LOG(LogInfo) << "PipeWireControl. Ready = " << mReady;
 	}
 
 	~PipeWireControl()
@@ -395,8 +414,10 @@ void VolumeControl::setVolume(int volume)
 {
 	internalVolume = Math::clamp(volume, 0, 100);
 
-	if (PipeWire.isReady())
-		PipeWire.setVolume(internalVolume);
+	// Unconditional. PipeWireControl records the value either way and only
+	// skips the sink when it has nothing to talk to, so the on-screen bar and
+	// audio.volume still follow the buttons even if the graph is unreachable.
+	PipeWire.setVolume(internalVolume);
 }
 
 bool VolumeControl::isAvailable()
