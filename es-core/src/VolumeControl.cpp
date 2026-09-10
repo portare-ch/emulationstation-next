@@ -7,6 +7,8 @@
 #include "Log.h"
 #include "Settings.h"
 
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <cerrno>
@@ -40,22 +42,26 @@ class PipeWireControl
 public:
 	PipeWireControl()
 	{
-		mLoop = nullptr;
-		mContext = nullptr;
-		mCore = nullptr;
-		mRegistry = nullptr;
-		mMetadata = nullptr;
-		mNode = nullptr;
-		mNodeId = SPA_ID_INVALID;
-		mReady = false;
+		clearHandles();
 		mVolume = 100;
 
 		pw_init(nullptr, nullptr);
+		connect();
+	}
+
+	// Split out of the constructor so a failed attempt can be repeated. The
+	// graph is not necessarily up when the frontend starts, and before this
+	// existed a single early failure was permanent for the life of the
+	// process.
+	void connect()
+	{
+		mLastAttempt = std::chrono::steady_clock::now();
 
 		mLoop = pw_thread_loop_new("es-volume", nullptr);
 		if (mLoop == nullptr)
 		{
 			LOG(LogError) << "PipeWireControl: pw_thread_loop_new failed";
+			disconnect();
 			return;
 		}
 
@@ -66,6 +72,7 @@ public:
 		if (pw_thread_loop_start(mLoop) < 0)
 		{
 			LOG(LogError) << "PipeWireControl: pw_thread_loop_start failed";
+			disconnect();
 			return;
 		}
 
@@ -96,7 +103,24 @@ public:
 
 		pw_thread_loop_unlock(mLoop);
 
-		LOG(LogInfo) << "PipeWireControl. Ready = " << mReady;
+		LOG(LogInfo) << "PipeWireControl. Ready = " << mReady.load();
+
+		if (!mReady)
+			disconnect();
+	}
+
+	// Called before every read and write. Cheap once connected, and otherwise
+	// retries on an interval rather than on every frame: VolumeInfoComponent
+	// polls the volume every 40ms.
+	void ensureConnected()
+	{
+		if (mReady)
+			return;
+
+		if (std::chrono::steady_clock::now() - mLastAttempt < std::chrono::seconds(5))
+			return;
+
+		connect();
 	}
 
 	~PipeWireControl()
@@ -104,18 +128,23 @@ public:
 		exit();
 	}
 
-	bool isReady() { return mReady; }
+	bool isReady() { return mReady.load(); }
 
 	int getVolume()
 	{
-		return mVolume;
+		ensureConnected();
+		return mVolume.load();
 	}
 
 	void setVolume(int value, bool setSinkVolume = true)
 	{
 		mVolume = Math::clamp(value, 0, 100);
 
-		if (!mReady || !setSinkVolume)
+		if (!setSinkVolume)
+			return;
+
+		ensureConnected();
+		if (!mReady)
 			return;
 
 		pw_thread_loop_lock(mLoop);
@@ -129,10 +158,17 @@ public:
 			return;
 
 		LOG(LogDebug) << "PipeWireControl.exit";
+		disconnect();
+	}
 
+	// Safe on a half-built connection, which is the point: connect() bails at
+	// whichever step failed and leaves the earlier handles behind.
+	void disconnect()
+	{
 		mReady = false;
 
-		pw_thread_loop_stop(mLoop);
+		if (mLoop != nullptr)
+			pw_thread_loop_stop(mLoop);
 
 		if (mNode != nullptr) { pw_proxy_destroy((pw_proxy*)mNode); mNode = nullptr; }
 		if (mMetadata != nullptr) { pw_proxy_destroy((pw_proxy*)mMetadata); mMetadata = nullptr; }
@@ -140,8 +176,9 @@ public:
 		if (mCore != nullptr) { pw_core_disconnect(mCore); mCore = nullptr; }
 		if (mContext != nullptr) { pw_context_destroy(mContext); mContext = nullptr; }
 
-		pw_thread_loop_destroy(mLoop);
-		mLoop = nullptr;
+		if (mLoop != nullptr) { pw_thread_loop_destroy(mLoop); mLoop = nullptr; }
+
+		clearHandles();
 	}
 
 private:
@@ -151,10 +188,10 @@ private:
 		if (mNode == nullptr)
 			return;
 
-		float linear = (float)std::pow(mVolume / 100.0, 3.0);
+		float linear = (float)std::pow(mVolume.load() / 100.0, 3.0);
 
 		float volumes[SPA_AUDIO_MAX_CHANNELS];
-		uint32_t channels = mChannels > 0 ? mChannels : 2;
+		uint32_t channels = mChannels.load() > 0 ? mChannels.load() : 2;
 		if (channels > SPA_AUDIO_MAX_CHANNELS)
 			channels = SPA_AUDIO_MAX_CHANNELS;
 
@@ -336,12 +373,30 @@ private:
 	spa_hook		mNodeListener;
 
 	uint32_t		mNodeId;
-	uint32_t		mChannels = 0;
 	std::string		mDefaultSink;
 	std::map<uint32_t, std::string> mSinks;
 
-	bool			mReady;
-	int				mVolume;
+	std::chrono::steady_clock::time_point mLastAttempt {};
+
+	// Written from the pipewire loop thread in node_param, read from the UI
+	// thread through getVolume.
+	std::atomic<uint32_t>	mChannels { 0 };
+	std::atomic<bool>		mReady { false };
+	std::atomic<int>		mVolume { 100 };
+
+	void clearHandles()
+	{
+		mLoop = nullptr;
+		mContext = nullptr;
+		mCore = nullptr;
+		mRegistry = nullptr;
+		mMetadata = nullptr;
+		mNode = nullptr;
+		mNodeId = SPA_ID_INVALID;
+		mDefaultSink.clear();
+		mSinks.clear();
+		mReady = false;
+	}
 
 	static const pw_registry_events	sRegistryEvents;
 	static const pw_metadata_events	sMetadataEvents;
@@ -365,7 +420,18 @@ const pw_node_events PipeWireControl::sNodeEvents = {
 	PipeWireControl::node_param,
 };
 
-static PipeWireControl PipeWire;
+// Built on first use rather than at static-init time. Running the constructor
+// before main() meant the connection was attempted before ES had opened its
+// log, so every error it reported went nowhere.
+static PipeWireControl& PipeWire()
+{
+	// Never destroyed on purpose. VolumeControl's destructor calls exit()
+	// through this accessor, and a static destroyed at process exit is not
+	// guaranteed to outlive it. One object leaked at exit is cheaper than a
+	// use-after-free during shutdown.
+	static PipeWireControl* instance = new PipeWireControl();
+	return *instance;
+}
 
 std::weak_ptr<VolumeControl> VolumeControl::sInstance;
 
@@ -376,8 +442,8 @@ VolumeControl::VolumeControl() : internalVolume(0)
 
 VolumeControl::~VolumeControl()
 {
-	if (PipeWire.isReady())
-		PipeWire.exit();
+	if (PipeWire().isReady())
+		PipeWire().exit();
 }
 
 std::shared_ptr<VolumeControl> & VolumeControl::getInstance()
@@ -398,7 +464,7 @@ void VolumeControl::init()
 	// locally rather than pushed at the sink, so starting up does not overwrite
 	// a volume something else has since set.
 	std::string volume = SystemConf::getInstance()->get("audio.volume");
-	PipeWire.setVolume(volume.empty() ? 100 : Utils::String::toInteger(volume), false);
+	PipeWire().setVolume(volume.empty() ? 100 : Utils::String::toInteger(volume), false);
 }
 
 void VolumeControl::deinit()
@@ -407,7 +473,7 @@ void VolumeControl::deinit()
 
 int VolumeControl::getVolume() const
 {
-	return Math::clamp(PipeWire.getVolume(), 0, 100);
+	return Math::clamp(PipeWire().getVolume(), 0, 100);
 }
 
 void VolumeControl::setVolume(int volume)
@@ -417,10 +483,5 @@ void VolumeControl::setVolume(int volume)
 	// Unconditional. PipeWireControl records the value either way and only
 	// skips the sink when it has nothing to talk to, so the on-screen bar and
 	// audio.volume still follow the buttons even if the graph is unreachable.
-	PipeWire.setVolume(internalVolume);
-}
-
-bool VolumeControl::isAvailable()
-{
-	return PipeWire.isReady();
+	PipeWire().setVolume(internalVolume);
 }
