@@ -4791,32 +4791,29 @@ void GuiMenu::openSoundSettings()
 {
 	auto s = new GuiSettings(mWindow, _("SOUND SETTINGS").c_str());
 
-	if (VolumeControl::getInstance()->isAvailable())
+	s->addGroup(_("VOLUME"));
+
+	// volume
+	auto volume = std::make_shared<SliderComponent>(mWindow, 0.f, 100.f, 1.f, "%");
+	volume->setValue((float)VolumeControl::getInstance()->getVolume());
+	volume->setOnValueChanged([](const float &newVal) { VolumeControl::getInstance()->setVolume((int)Math::round(newVal)); });
+	s->addWithLabel(_("SYSTEM VOLUME"), volume);
+	s->addSaveFunc([this, volume]
 	{
-		s->addGroup(_("VOLUME"));
-
-		// volume
-		auto volume = std::make_shared<SliderComponent>(mWindow, 0.f, 100.f, 1.f, "%");
-		volume->setValue((float)VolumeControl::getInstance()->getVolume());
-		volume->setOnValueChanged([](const float &newVal) { VolumeControl::getInstance()->setVolume((int)Math::round(newVal)); });
-		s->addWithLabel(_("SYSTEM VOLUME"), volume);
-		s->addSaveFunc([this, volume]
-		{
-			VolumeControl::getInstance()->setVolume((int)Math::round(volume->getValue()));
+		VolumeControl::getInstance()->setVolume((int)Math::round(volume->getValue()));
 #if !WIN32
-			SystemConf::getInstance()->set("audio.volume", std::to_string((int)round(volume->getValue())));
+		SystemConf::getInstance()->set("audio.volume", std::to_string((int)round(volume->getValue())));
 #endif
-		});
+	});
 
 
-		// Music Volume
-		auto musicVolume = std::make_shared<SliderComponent>(mWindow, 0.f, 100.f, 1.f, "%");
-		musicVolume->setValue(Settings::getInstance()->getInt("MusicVolume"));
-		musicVolume->setOnValueChanged([](const float &newVal) { Settings::getInstance()->setInt("MusicVolume", (int)round(newVal)); });
-		s->addWithLabel(_("MUSIC VOLUME"), musicVolume);
+	// Music Volume
+	auto musicVolume = std::make_shared<SliderComponent>(mWindow, 0.f, 100.f, 1.f, "%");
+	musicVolume->setValue(Settings::getInstance()->getInt("MusicVolume"));
+	musicVolume->setOnValueChanged([](const float &newVal) { Settings::getInstance()->setInt("MusicVolume", (int)round(newVal)); });
+	s->addWithLabel(_("MUSIC VOLUME"), musicVolume);
 
-		s->addSwitch(_("SHOW OVERLAY WHEN VOLUME CHANGES"), "VolumePopup", true);
-	}
+	s->addSwitch(_("SHOW OVERLAY WHEN VOLUME CHANGES"), "VolumePopup", true);
 
 	s->addGroup(_("MUSIC"));
 
