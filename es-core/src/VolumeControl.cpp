@@ -10,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <cerrno>
 #include <map>
@@ -17,6 +18,7 @@
 #include <pipewire/pipewire.h>
 #include <pipewire/extensions/metadata.h>
 #include <spa/param/props.h>
+#include <spa/param/route.h>
 #include <spa/param/audio/raw.h>
 #include <spa/pod/builder.h>
 #include <spa/pod/iter.h>
@@ -33,6 +35,14 @@
 // registry says which node *id* carries that name; and the node itself holds
 // channelVolumes under SPA_PARAM_Props. The default can change under us, so the
 // registry listener stays subscribed and rebinds when it does.
+//
+// A sink that belongs to a sound card is set through the card's active route,
+// the way wpctl and pipewire-pulse do it, not through the node. The volume
+// keys go through wpctl, and a value written to the node alone is neither
+// seen by wireplumber nor saved, so the two paths drifted apart and only the
+// keys' value came back after a reboot. The node's Props still mirror the
+// route, so reading stays on the node. Sinks without a card, such as the
+// null sink, are still set on the node.
 //
 // channelVolumes are linear amplitude. The number in the UI is not: pulse, and
 // wireplumber after it, present a cubic curve, so the same 30% has to mean the
@@ -170,6 +180,7 @@ public:
 		if (mLoop != nullptr)
 			pw_thread_loop_stop(mLoop);
 
+		if (mDevice != nullptr) { pw_proxy_destroy((pw_proxy*)mDevice); mDevice = nullptr; }
 		if (mNode != nullptr) { pw_proxy_destroy((pw_proxy*)mNode); mNode = nullptr; }
 		if (mMetadata != nullptr) { pw_proxy_destroy((pw_proxy*)mMetadata); mMetadata = nullptr; }
 		if (mRegistry != nullptr) { pw_proxy_destroy((pw_proxy*)mRegistry); mRegistry = nullptr; }
@@ -200,15 +211,75 @@ private:
 
 		uint8_t buffer[1024];
 		spa_pod_builder b = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
+		spa_pod_frame f[2];
 
-		spa_pod_frame f;
-		spa_pod_builder_push_object(&b, &f, SPA_TYPE_OBJECT_Props, SPA_PARAM_Props);
-		spa_pod_builder_prop(&b, SPA_PROP_channelVolumes, 0);
-		spa_pod_builder_array(&b, sizeof(float), SPA_TYPE_Float, channels, volumes);
-		spa_pod* pod = (spa_pod*)spa_pod_builder_pop(&b, &f);
+		if (mDevice != nullptr && mRouteIndex >= 0 && mRouteDevice >= 0)
+		{
+			spa_pod_builder_push_object(&b, &f[0], SPA_TYPE_OBJECT_ParamRoute, SPA_PARAM_Route);
+			spa_pod_builder_add(&b,
+				SPA_PARAM_ROUTE_index, SPA_POD_Int(mRouteIndex),
+				SPA_PARAM_ROUTE_device, SPA_POD_Int(mRouteDevice),
+				0);
+			spa_pod_builder_prop(&b, SPA_PARAM_ROUTE_props, 0);
+			spa_pod_builder_push_object(&b, &f[1], SPA_TYPE_OBJECT_Props, SPA_PARAM_Props);
+			spa_pod_builder_prop(&b, SPA_PROP_channelVolumes, 0);
+			spa_pod_builder_array(&b, sizeof(float), SPA_TYPE_Float, channels, volumes);
+			spa_pod_builder_pop(&b, &f[1]);
+			spa_pod_builder_prop(&b, SPA_PARAM_ROUTE_save, 0);
+			spa_pod_builder_bool(&b, true);
+			spa_pod* pod = (spa_pod*)spa_pod_builder_pop(&b, &f[0]);
 
-		pw_node_set_param(mNode, SPA_PARAM_Props, 0, pod);
+			pw_device_set_param(mDevice, SPA_PARAM_Route, 0, pod);
+		}
+		else
+		{
+			spa_pod_builder_push_object(&b, &f[0], SPA_TYPE_OBJECT_Props, SPA_PARAM_Props);
+			spa_pod_builder_prop(&b, SPA_PROP_channelVolumes, 0);
+			spa_pod_builder_array(&b, sizeof(float), SPA_TYPE_Float, channels, volumes);
+			spa_pod* pod = (spa_pod*)spa_pod_builder_pop(&b, &f[0]);
+
+			pw_node_set_param(mNode, SPA_PARAM_Props, 0, pod);
+		}
+
 		pw_core_sync(mCore, PW_ID_CORE, 0);
+	}
+
+	void releaseDevice()
+	{
+		if (mDevice != nullptr)
+		{
+			pw_proxy_destroy((pw_proxy*)mDevice);
+			mDevice = nullptr;
+		}
+
+		mDeviceId = SPA_ID_INVALID;
+		mRouteDevice = -1;
+		mRouteIndex = -1;
+	}
+
+	// Called from the node's info event, which is where device.id and
+	// card.profile.device arrive: the registry global carries neither.
+	void bindDevice(uint32_t deviceId, int routeDevice)
+	{
+		if (deviceId == mDeviceId && mDevice != nullptr)
+		{
+			mRouteDevice = routeDevice;
+			return;
+		}
+
+		releaseDevice();
+
+		mDeviceId = deviceId;
+		mRouteDevice = routeDevice;
+		mDevice = (pw_device*)pw_registry_bind(mRegistry, deviceId, PW_TYPE_INTERFACE_Device, PW_VERSION_DEVICE, 0);
+		if (mDevice == nullptr)
+			return;
+
+		spa_zero(mDeviceListener);
+		pw_device_add_listener(mDevice, &mDeviceListener, &sDeviceEvents, this);
+
+		uint32_t ids[] = { SPA_PARAM_Route };
+		pw_device_subscribe_params(mDevice, ids, 1);
 	}
 
 	void bindDefaultSink(uint32_t id)
@@ -218,6 +289,8 @@ private:
 			pw_proxy_destroy((pw_proxy*)mNode);
 			mNode = nullptr;
 		}
+
+		releaseDevice();
 
 		mNodeId = id;
 		mNode = (pw_node*)pw_registry_bind(mRegistry, id, PW_TYPE_INTERFACE_Node, PW_VERSION_NODE, 0);
@@ -301,6 +374,9 @@ private:
 			pThis->mNode = nullptr;
 			pThis->mNodeId = SPA_ID_INVALID;
 		}
+
+		if (pThis->mDeviceId == id)
+			pThis->releaseDevice();
 	}
 
 	// default.audio.sink arrives as {"name":"<node.name>"}.
@@ -338,6 +414,46 @@ private:
 		return 0;
 	}
 
+	static void node_info(void* data, const pw_node_info* info)
+	{
+		PipeWireControl* pThis = (PipeWireControl*)data;
+
+		if (info == nullptr || !(info->change_mask & PW_NODE_CHANGE_MASK_PROPS) || info->props == nullptr)
+			return;
+
+		const char* deviceId = spa_dict_lookup(info->props, PW_KEY_DEVICE_ID);
+		const char* routeDevice = spa_dict_lookup(info->props, "card.profile.device");
+
+		if (deviceId == nullptr || routeDevice == nullptr)
+		{
+			pThis->releaseDevice();
+			return;
+		}
+
+		pThis->bindDevice((uint32_t)atoi(deviceId), atoi(routeDevice));
+	}
+
+	// The active routes, one per card.profile.device. Only the index is kept:
+	// setting a route needs it, and it changes when the port does, for
+	// instance when headphones are plugged in.
+	static void device_param(void* data, int /*seq*/, uint32_t id, uint32_t /*index*/,
+		uint32_t /*next*/, const spa_pod* param)
+	{
+		PipeWireControl* pThis = (PipeWireControl*)data;
+
+		if (param == nullptr || id != SPA_PARAM_Route)
+			return;
+
+		int32_t routeIndex, routeDevice;
+		if (spa_pod_parse_object(param, SPA_TYPE_OBJECT_ParamRoute, nullptr,
+				SPA_PARAM_ROUTE_index, SPA_POD_Int(&routeIndex),
+				SPA_PARAM_ROUTE_device, SPA_POD_Int(&routeDevice)) < 0)
+			return;
+
+		if (routeDevice == pThis->mRouteDevice)
+			pThis->mRouteIndex = routeIndex;
+	}
+
 	static void node_param(void* data, int /*seq*/, uint32_t id, uint32_t /*index*/,
 		uint32_t /*next*/, const spa_pod* param)
 	{
@@ -367,12 +483,19 @@ private:
 	pw_registry*	mRegistry;
 	pw_metadata*	mMetadata;
 	pw_node*		mNode;
+	pw_device*		mDevice;
 
 	spa_hook		mRegistryListener;
 	spa_hook		mMetadataListener;
 	spa_hook		mNodeListener;
+	spa_hook		mDeviceListener;
 
 	uint32_t		mNodeId;
+	uint32_t		mDeviceId;
+
+	// Only touched on the pipewire loop thread, or with the loop locked.
+	int32_t			mRouteDevice;
+	int32_t			mRouteIndex;
 	std::string		mDefaultSink;
 	std::map<uint32_t, std::string> mSinks;
 
@@ -393,6 +516,10 @@ private:
 		mMetadata = nullptr;
 		mNode = nullptr;
 		mNodeId = SPA_ID_INVALID;
+		mDevice = nullptr;
+		mDeviceId = SPA_ID_INVALID;
+		mRouteDevice = -1;
+		mRouteIndex = -1;
 		mDefaultSink.clear();
 		mSinks.clear();
 		mReady = false;
@@ -401,6 +528,7 @@ private:
 	static const pw_registry_events	sRegistryEvents;
 	static const pw_metadata_events	sMetadataEvents;
 	static const pw_node_events		sNodeEvents;
+	static const pw_device_events	sDeviceEvents;
 };
 
 const pw_registry_events PipeWireControl::sRegistryEvents = {
@@ -416,8 +544,14 @@ const pw_metadata_events PipeWireControl::sMetadataEvents = {
 
 const pw_node_events PipeWireControl::sNodeEvents = {
 	PW_VERSION_NODE_EVENTS,
-	nullptr,
+	PipeWireControl::node_info,
 	PipeWireControl::node_param,
+};
+
+const pw_device_events PipeWireControl::sDeviceEvents = {
+	PW_VERSION_DEVICE_EVENTS,
+	nullptr,
+	PipeWireControl::device_param,
 };
 
 // Built on first use rather than at static-init time. Running the constructor
