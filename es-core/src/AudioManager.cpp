@@ -34,11 +34,14 @@
 // applyMusicVolume() converts at the point of use.
 #define MAX_MUSIC_VOLUME 128
 
+// Silence after which the audio device is handed back.
+#define IDLE_RELEASE_MS 10000
+
 AudioManager* AudioManager::sInstance = NULL;
 MIX_Mixer* AudioManager::sMixer = nullptr;
 std::vector<std::shared_ptr<Sound>> AudioManager::sSoundVector;
 
-AudioManager::AudioManager() : mInitialized(false), mCurrentMusic(nullptr), mMusicTrack(nullptr), mMusicVolume(MAX_MUSIC_VOLUME), mVideoPlaying(false)
+AudioManager::AudioManager() : mInitialized(false), mCurrentMusic(nullptr), mMusicTrack(nullptr), mMusicVolume(MAX_MUSIC_VOLUME), mVideoPlaying(false), mIdleTime(0)
 {
 	init();
 }
@@ -126,6 +129,51 @@ void AudioManager::applyMusicVolume()
 	MIX_SetTrackGain(mMusicTrack, (float)mMusicVolume / (float)MAX_MUSIC_VOLUME);
 }
 
+
+bool AudioManager::anySoundPlaying() const
+{
+	for (unsigned int i = 0; i < sSoundVector.size(); i++)
+		if (sSoundVector.at(i)->isPlaying())
+			return true;
+
+	return false;
+}
+
+// Hold the device only while it is being used. SDL keeps an open device fed
+// with silence, so the PipeWire sink stays RUNNING for the life of the
+// front-end: it pins the sink's sample rate, which is why 44.1 kHz content
+// could not get a 44.1 kHz sink, and it costs about a fifth of the draw while
+// the machine is suspended.
+void AudioManager::updateIdleRelease(int deltaTime)
+{
+	if (!mInitialized)
+		return;
+
+	if (isSongPlaying() || anySoundPlaying())
+	{
+		mIdleTime = 0;
+		return;
+	}
+
+	mIdleTime += deltaTime;
+	if (mIdleTime < IDLE_RELEASE_MS)
+		return;
+
+	LOG(LogInfo) << "AudioManager: releasing the audio device after " << (mIdleTime / 1000) << "s of silence";
+	deinit();
+	mIdleTime = 0;
+}
+
+// Sound::play() and the music paths call this: the device may have been
+// released, and reopening it also reloads every registered sound.
+void AudioManager::ensureInitialized()
+{
+	AudioManager* instance = getInstance();
+	if (!instance->mInitialized)
+		instance->init();
+
+	instance->mIdleTime = 0;
+}
 
 void AudioManager::deinit()
 {
@@ -454,6 +502,8 @@ void AudioManager::playMusic(const std::string& path)
 	if (!Settings::BackgroundMusic())
 		return;
 
+	ensureInitialized();
+
 	if (sMixer == nullptr || mMusicTrack == nullptr)
 		return;
 
@@ -780,7 +830,14 @@ int AudioManager::getMaxMusicVolume()
 
 void AudioManager::update(int deltaTime)
 {
-	if (sInstance == nullptr || !sInstance->mInitialized || !Settings::BackgroundMusic())
+	if (sInstance == nullptr)
+		return;
+
+	// before the early return below: with background music off, this is the
+	// only thing that ever closes the device
+	sInstance->updateIdleRelease(deltaTime);
+
+	if (!sInstance->mInitialized || !Settings::BackgroundMusic())
 		return;
 
 	float deltaVol = deltaTime / 8.0f;

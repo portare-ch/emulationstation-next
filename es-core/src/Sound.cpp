@@ -18,7 +18,10 @@ std::shared_ptr<Sound> Sound::get(const std::string& path)
 
 	std::shared_ptr<Sound> sound = std::shared_ptr<Sound>(new Sound(file));
 
-	if (AudioManager::isInitialized())
+	// Register whenever the manager exists, not only when it holds a device:
+	// after an idle release it holds none, and a sound left unregistered
+	// here would never be reloaded when the device comes back.
+	if (AudioManager::isInitialized() || AudioManager::hasInstance())
 	{
 		AudioManager::getInstance()->registerSound(sound);
 		sMap[file] = sound;
@@ -112,11 +115,23 @@ void Sound::deinit()
 
 void Sound::play()
 {
-	if (mSampleData == nullptr)
-		return;
-
 	if (!Settings::getInstance()->getBool("EnableSounds"))
 		return;
+
+	// The device is handed back after a spell of silence, which frees every
+	// loaded sound with it. Reopen and reload on the way to playing rather
+	// than going quiet for good.
+	if (mSampleData == nullptr)
+	{
+		// reopening reloads every registered sound, so only load by hand
+		// if this one was not among them
+		AudioManager::ensureInitialized();
+		if (mSampleData == nullptr)
+			init();
+
+		if (mSampleData == nullptr)
+			return;
+	}
 
 	if (mTrack == nullptr)
 		return;
