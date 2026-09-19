@@ -1234,7 +1234,7 @@ namespace Renderer
 			throw std::runtime_error(error);
 		}
 
-		if (SDL_GL_MakeCurrent(getSDLWindow(), sdlContext) != 0)
+		if (!SDL_GL_MakeCurrent(getSDLWindow(), sdlContext))
 		{
 			const std::string error = "Unable to activate " + getDriverName() + " context: " + SDL_GetError();
 			LOG(LogError) << error;
@@ -1844,10 +1844,10 @@ namespace Renderer
 			// SDL_GL_SetSwapInterval(0) for immediate updates (no vsync, default),
 			// 1 for updates synchronized with the vertical retrace,
 			// or -1 for late swap tearing.
-			// SDL_GL_SetSwapInterval returns 0 on success, -1 on error.
+			// SDL_GL_SetSwapInterval returns true on success, false on error.
 			// if vsync is requested, try normal vsync; if that doesn't work, try late swap tearing
 			// if that doesn't work, report an error
-			if (SDL_GL_SetSwapInterval(1) != 0 && SDL_GL_SetSwapInterval(-1) != 0)
+			if (!SDL_GL_SetSwapInterval(1) && !SDL_GL_SetSwapInterval(-1))
 				LOG(LogWarning) << "Tried to enable vsync, but failed! (" << SDL_GetError() << ")";
 		}
 		else
