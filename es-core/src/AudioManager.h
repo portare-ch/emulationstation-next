@@ -34,6 +34,13 @@ private:
 	static void musicEnd_callback(void* userdata, MIX_Track* track);
 	void applyMusicVolume();
 
+	// Nothing closes the audio device otherwise. SDL keeps feeding it
+	// silence, so the PipeWire sink never goes idle, which pins the sample
+	// rate and keeps the DSP path up even in suspend.
+	void updateIdleRelease(int deltaTime);
+	bool anySoundPlaying() const;
+	int mIdleTime;
+
 	std::string mSystemName;			// Per system music folder
 	std::string mCurrentSong;			// Song name displayed in pop-ups
 	std::string mCurrentThemeMusicDirectory;
@@ -47,8 +54,16 @@ public:
 	static AudioManager* getInstance();
 	static bool isInitialized();
 
-	// Sound loads and plays through the same mixer.
+	// Sound loads and plays through the same mixer. It can be null: the
+	// device is released after a spell of silence and reopened on demand.
 	static MIX_Mixer* getMixer() { return sMixer; }
+
+	// Reopen the device if the idle release closed it.
+	static void ensureInitialized();
+
+	// The manager exists but may be holding no device, which is a different
+	// question from isInitialized().
+	static bool hasInstance() { return sInstance != nullptr; }
 	
 	void init();
 	void deinit();
