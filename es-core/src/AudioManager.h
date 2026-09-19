@@ -2,10 +2,10 @@
 #ifndef ES_CORE_AUDIO_MANAGER_H
 #define ES_CORE_AUDIO_MANAGER_H
 
-#include <SDL_audio.h>
+#include <SDL3/SDL_audio.h>
 #include <memory>
 #include <vector>
-#include "SDL_mixer.h"
+#include <SDL3_mixer/SDL_mixer.h>
 #include <string> 
 #include <iostream> 
 #include <deque>
@@ -22,10 +22,17 @@ private:
 	static std::vector<std::shared_ptr<Sound>> sSoundVector;
 	static AudioManager* sInstance;
 	
-	Mix_Music* mCurrentMusic; 
-	void getMusicIn(const std::string &path, std::vector<std::string>& all_matching_files); 
+	// SDL3_mixer has no channels or a music slot of its own: a mixer owns
+	// tracks, a track plays one MIX_Audio at a time. Music is one track
+	// held open for the life of the manager, so gain and fades survive a
+	// change of song.
+	static MIX_Mixer* sMixer;
+	MIX_Audio* mCurrentMusic;
+	MIX_Track* mMusicTrack;
+	void getMusicIn(const std::string &path, std::vector<std::string>& all_matching_files);
 	void playMusic(const std::string& path);
-	static void musicEnd_callback();	
+	static void musicEnd_callback(void* userdata, MIX_Track* track);
+	void applyMusicVolume();
 
 	std::string mSystemName;			// Per system music folder
 	std::string mCurrentSong;			// Song name displayed in pop-ups
@@ -39,6 +46,9 @@ private:
 public:
 	static AudioManager* getInstance();
 	static bool isInitialized();
+
+	// Sound loads and plays through the same mixer.
+	static MIX_Mixer* getMixer() { return sMixer; }
 	
 	void init();
 	void deinit();

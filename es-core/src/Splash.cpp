@@ -4,7 +4,7 @@
 #include "resources/TextureResource.h"
 #include "components/NinePatchComponent.h"
 #include <algorithm>
-#include <SDL_events.h>
+#include <SDL3/SDL_events.h>
 #include "BindingManager.h"
 
 Splash::Splash(Window* window, const std::string image, bool fullScreenBackGround, IBindable* bindable) :

@@ -209,9 +209,11 @@ endif()
 find_package(Freetype REQUIRED)
 find_package(FreeImage REQUIRED)
 # batocera / background musics
-find_package(SDL2MIXER REQUIRED)
+# SDL3 and SDL3_mixer ship their own CMake config packages, so the
+# hand-written Find modules this tree carried for SDL2 are gone with them.
+find_package(SDL3_mixer CONFIG REQUIRED)
 # batocera / customisations
-find_package(SDL2 REQUIRED)
+find_package(SDL3 CONFIG REQUIRED)
 find_package(CURL REQUIRED)
 find_package(MPV REQUIRED)
 find_package(RapidJSON REQUIRED)
@@ -344,10 +346,7 @@ set(COMMON_INCLUDE_DIRS
     ${FREETYPE_INCLUDE_DIRS}
     ${FreeImage_INCLUDE_DIRS}
     ${FRIBIDI_INCLUDE_DIRS}
-    # batocera / background musics
-    ${SDLMIXER_INCLUDE_DIR}
-    # batocera / customisations    
-    ${SDL2_INCLUDE_DIR}
+    # batocera / customisations
     ${CURL_INCLUDE_DIR}
     ${MPV_INCLUDE_DIR}
     ${RAPIDJSON_INCLUDE_DIRS}
@@ -424,9 +423,9 @@ set(COMMON_LIBRARIES
     ${FREETYPE_LIBRARIES}
     ${FreeImage_LIBRARIES}
     ${FRIBIDI_LIBRARIES}
-    ${SDL2_LIBRARY}
+    SDL3::SDL3
     # batocera / background musics
-    ${SDLMIXER_LIBRARY}
+    SDL3_mixer::SDL3_mixer
     # batocera / customisations    
     ${CURL_LIBRARIES}
     ${MPV_LIBRARIES}

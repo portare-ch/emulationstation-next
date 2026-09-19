@@ -665,7 +665,7 @@ namespace Renderer
 	{
 		resetCache();
 
-		SDL_GL_DeleteContext(sdlContext);
+		SDL_GL_DestroyContext(sdlContext);
 		sdlContext = nullptr;
 
 	} // destroyContext

@@ -5,7 +5,7 @@
 #include "components/ComponentGrid.h"
 #include "components/NinePatchComponent.h"
 #include "GuiComponent.h"
-#include <SDL_mutex.h>
+#include <SDL3/SDL_mutex.h>
 
 class AnimatedImageComponent;
 class TextComponent;
@@ -33,7 +33,7 @@ private:
 	std::shared_ptr<AnimatedImageComponent> mAnimation;
 	std::shared_ptr<TextComponent> mText;
         
-	SDL_mutex *mutex;
+	SDL_Mutex *mutex;
 	bool threadMessagechanged;
 	std::string threadMessage;
 };

@@ -5,7 +5,7 @@
 #include "PowerSaver.h"
 #include "ThemeData.h"
 #include "Window.h"
-#include <SDL_timer.h>
+#include <SDL3/SDL_timer.h>
 #include "LocaleES.h"
 #include "Paths.h"
 
