@@ -137,7 +137,7 @@ namespace Renderer
 	{
 		LOG(LogInfo) << "Creating window...";
 
-		if(SDL_Init(SDL_INIT_VIDEO) != 0)
+		if(!SDL_Init(SDL_INIT_VIDEO))
 		{
 			LOG(LogError) << "Error initializing SDL!\n	" << SDL_GetError();
 			return false;
