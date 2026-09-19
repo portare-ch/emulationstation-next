@@ -65,13 +65,14 @@ jobs:
         run: |
           echo "PIPEWIRE_VERSION=1.6.8" >> "${GITHUB_ENV}"
           echo "MPV_VERSION=0.41.0" >> "${GITHUB_ENV}"
+          echo "SDL3_MIXER_VERSION=3.2.4" >> "${GITHUB_ENV}"
 
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake pkg-config \
-            libsdl2-dev libsdl2-mixer-dev \
+            libsdl3-dev \
             libfreeimage-dev libfreetype-dev \
             libcurl4-openssl-dev rapidjson-dev \
             libgl1-mesa-dev libgles-dev \
@@ -152,6 +153,25 @@ jobs:
 
           pkg-config --cflags libpipewire-0.3
           pkg-config --modversion libpipewire-0.3 mpv
+
+      # SDL3_mixer is not in apt at all, so it is built here. The decoders
+      # are all switched off: this job links the library to check the calls
+      # compile, and every format the front-end actually plays comes from
+      # the image build, where the package enables them against the system
+      # codecs. apt's libsdl3-dev covers SDL3 itself.
+      - name: Build SDL3_mixer
+        run: |
+          curl -sSL "https://github.com/libsdl-org/SDL_mixer/releases/download/release-${SDL3_MIXER_VERSION}/SDL3_mixer-${SDL3_MIXER_VERSION}.tar.gz" | tar xz -C "${RUNNER_TEMP}"
+          cmake -S "${RUNNER_TEMP}/SDL3_mixer-${SDL3_MIXER_VERSION}" -B "${RUNNER_TEMP}/mixer-build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${PINNED_PREFIX}" \
+            -DSDLMIXER_VENDORED=OFF \
+            -DSDLMIXER_FLAC=OFF -DSDLMIXER_GME=OFF -DSDLMIXER_MOD=OFF \
+            -DSDLMIXER_MP3=OFF -DSDLMIXER_MIDI=OFF -DSDLMIXER_OPUS=OFF \
+            -DSDLMIXER_VORBIS=OFF -DSDLMIXER_WAVPACK=OFF \
+            -DSDLMIXER_TESTS=OFF -DSDLMIXER_EXAMPLES=OFF -DSDLMIXER_WERROR=OFF
+          cmake --build "${RUNNER_TEMP}/mixer-build" -j"$(nproc)"
+          cmake --install "${RUNNER_TEMP}/mixer-build"
 
       - name: ccache
         uses: hendrikmuhs/ccache-action@v1
