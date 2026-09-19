@@ -1238,7 +1238,7 @@ namespace Renderer
 		{
 			const std::string error = "Unable to activate " + getDriverName() + " context: " + SDL_GetError();
 			LOG(LogError) << error;
-			SDL_GL_DeleteContext(sdlContext);
+			SDL_GL_DestroyContext(sdlContext);
 			sdlContext = nullptr;
 			throw std::runtime_error(error);
 		}
@@ -1254,7 +1254,7 @@ namespace Renderer
 		{
 			const std::string error = "Requested OpenGL ES 3.x but SDL created context " + std::to_string(contextMajor) + "." + std::to_string(contextMinor);
 			LOG(LogError) << error;
-			SDL_GL_DeleteContext(sdlContext);
+			SDL_GL_DestroyContext(sdlContext);
 			sdlContext = nullptr;
 			throw std::runtime_error(error);
 		}
@@ -1410,7 +1410,7 @@ namespace Renderer
 		boundTexture = 0;
 		boundTextureInfo = nullptr;
 
-		SDL_GL_DeleteContext(sdlContext);
+		SDL_GL_DestroyContext(sdlContext);
 		sdlContext = nullptr;
 
 	} // destroyContext

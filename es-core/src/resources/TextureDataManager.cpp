@@ -6,7 +6,7 @@
 #include "Log.h"
 #include "utils/Platform.h"
 #include <algorithm>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 TextureDataManager::TextureDataManager()
 {

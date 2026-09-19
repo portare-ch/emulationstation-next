@@ -2,7 +2,7 @@
 
 #include "AudioManager.h"
 #include "Settings.h"
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "math/Misc.h"
 
 bool PowerSaver::mState = false;

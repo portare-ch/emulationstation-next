@@ -4,7 +4,7 @@
 #include "ThemeData.h"
 #include "InputManager.h"
 #include "Settings.h"
-#include <SDL_power.h>
+#include <SDL3/SDL_power.h>
 #include "utils/StringUtil.h"
 
 BatteryIndicatorComponent::BatteryIndicatorComponent(Window* window) : ControllerActivityComponent(window) { }

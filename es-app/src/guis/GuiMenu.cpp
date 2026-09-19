@@ -29,7 +29,7 @@
 #include "Scripting.h"
 #include "SystemData.h"
 #include "VolumeControl.h"
-#include <SDL_events.h>
+#include <SDL3/SDL_events.h>
 #include <algorithm>
 #include "utils/Platform.h"
 #include "utils/FileSystemUtil.h"

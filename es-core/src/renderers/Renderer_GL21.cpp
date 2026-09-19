@@ -7,8 +7,8 @@
 #include "Log.h"
 #include "Settings.h"
 
-#include <SDL_opengl.h>
-#include <SDL.h>
+#include <SDL3/SDL_opengl.h>
+#include <SDL3/SDL.h>
 #include <vector>
 
 namespace Renderer
@@ -130,7 +130,7 @@ namespace Renderer
 
 	void OpenGL21Renderer::destroyContext()
 	{
-		SDL_GL_DeleteContext(sdlContext);
+		SDL_GL_DestroyContext(sdlContext);
 		sdlContext = nullptr;
 
 	} // destroyContext

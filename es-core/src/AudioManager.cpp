@@ -4,7 +4,7 @@
 #include "Log.h"
 #include "Settings.h"
 #include "Sound.h"
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "utils/FileSystemUtil.h"
 #include "utils/StringUtil.h"
 #include "utils/Randomizer.h"
@@ -29,10 +29,16 @@
 // Size of last played music history as a percentage of file total
 #define LAST_PLAYED_SIZE 0.4
 
+// SDL2_mixer's MIX_MAX_VOLUME, which SDL3_mixer does not have: it works in
+// gains now. The volume arithmetic here still counts in these units and
+// applyMusicVolume() converts at the point of use.
+#define MAX_MUSIC_VOLUME 128
+
 AudioManager* AudioManager::sInstance = NULL;
+MIX_Mixer* AudioManager::sMixer = nullptr;
 std::vector<std::shared_ptr<Sound>> AudioManager::sSoundVector;
 
-AudioManager::AudioManager() : mInitialized(false), mCurrentMusic(nullptr), mMusicVolume(MIX_MAX_VOLUME), mVideoPlaying(false)
+AudioManager::AudioManager() : mInitialized(false), mCurrentMusic(nullptr), mMusicTrack(nullptr), mMusicVolume(MAX_MUSIC_VOLUME), mVideoPlaying(false)
 {
 	init();
 }
@@ -68,20 +74,35 @@ void AudioManager::init()
 	mPlayingSystemThemeSong = "none";
 	std::deque<std::string> mLastPlayed;
 
-	if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0)
+	if (!SDL_InitSubSystem(SDL_INIT_AUDIO))
 	{
 		LOG(LogError) << "Error initializing SDL audio!\n" << SDL_GetError();
 		return;
 	}
 
-	// Open the audio device and pause
-	if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 4096) < 0)
+	if (!MIX_Init())
 	{
 		mMusicVolume = 0;
-		LOG(LogError) << "MUSIC Error - Unable to open SDLMixer audio: " << SDL_GetError() << std::endl;
+		LOG(LogError) << "MUSIC Error - Unable to start SDL_mixer: " << SDL_GetError();
+		return;
+	}
+
+	// The device decides the format. Asking for 44100 stereo the way the
+	// SDL2 build did only makes the mixer resample to whatever the device
+	// wanted anyway, and on this hardware that is 44100 already.
+	sMixer = MIX_CreateMixerDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, nullptr);
+	if (sMixer == nullptr)
+	{
+		mMusicVolume = 0;
+		MIX_Quit();
+		LOG(LogError) << "MUSIC Error - Unable to open SDLMixer audio: " << SDL_GetError();
 	}
 	else
 	{
+		mMusicTrack = MIX_CreateTrack(sMixer);
+		if (mMusicTrack == nullptr)
+			LOG(LogError) << "MUSIC Error - Unable to create the music track: " << SDL_GetError();
+
 		LOG(LogInfo) << "SDL AUDIO Initialized";
 		mInitialized = true;
 
@@ -90,8 +111,19 @@ void AudioManager::init()
 			sSoundVector[i]->init();
 
 		mMusicVolume = getMaxMusicVolume();
-		Mix_VolumeMusic(mMusicVolume);
+		applyMusicVolume();
 	}
+}
+
+// SDL2_mixer took 0 to MAX_MUSIC_VOLUME; SDL3_mixer takes a gain, where 1.0
+// is unchanged. The volume arithmetic elsewhere in this file still counts
+// in the old units, so the conversion lives in one place.
+void AudioManager::applyMusicVolume()
+{
+	if (mMusicTrack == nullptr)
+		return;
+
+	MIX_SetTrackGain(mMusicTrack, (float)mMusicVolume / (float)MAX_MUSIC_VOLUME);
 }
 
 
@@ -112,11 +144,21 @@ void AudioManager::deinit()
 	for (unsigned int i = 0; i < sSoundVector.size(); i++)
 		sSoundVector[i]->deinit();
 
-	Mix_HookMusicFinished(nullptr);
-	Mix_HaltMusic();
+	if (mMusicTrack != nullptr)
+	{
+		MIX_SetTrackStoppedCallback(mMusicTrack, nullptr, nullptr);
+		MIX_StopTrack(mMusicTrack, 0);
+		MIX_DestroyTrack(mMusicTrack);
+		mMusicTrack = nullptr;
+	}
 
 	//completely tear down SDL audio. else SDL hogs audio resources and emulators might fail to start...
-	Mix_CloseAudio();
+	if (sMixer != nullptr)
+	{
+		MIX_DestroyMixer(sMixer);
+		sMixer = nullptr;
+	}
+	MIX_Quit();
 	SDL_QuitSubSystem(SDL_INIT_AUDIO);
 
 	LOG(LogInfo) << "SDL AUDIO Deinitialized";
@@ -412,25 +454,43 @@ void AudioManager::playMusic(const std::string& path)
 	if (!Settings::BackgroundMusic())
 		return;
 
+	if (sMixer == nullptr || mMusicTrack == nullptr)
+		return;
+
 	// load a new music
-	mCurrentMusic = Mix_LoadMUS(path.c_str());
+	mCurrentMusic = MIX_LoadAudio(sMixer, path.c_str(), false);
 	if (mCurrentMusic == NULL)
 	{
-		LOG(LogError) << Mix_GetError() << " for " << path;
+		LOG(LogError) << SDL_GetError() << " for " << path;
 		return;
 	}
 
-	if (Mix_FadeInMusic(mCurrentMusic, 1, 1000) == -1)
+	if (!MIX_SetTrackAudio(mMusicTrack, mCurrentMusic))
+	{
+		LOG(LogError) << SDL_GetError() << " for " << path;
+		stopMusic(false);
+		return;
+	}
+
+	// Play once, fading in over a second, as Mix_FadeInMusic(music, 1,
+	// 1000) did. Options are properties now.
+	SDL_PropertiesID options = SDL_CreateProperties();
+	SDL_SetNumberProperty(options, MIX_PROP_PLAY_LOOPS_NUMBER, 0);
+	SDL_SetNumberProperty(options, MIX_PROP_PLAY_FADE_IN_MILLISECONDS_NUMBER, 1000);
+	const bool played = MIX_PlayTrack(mMusicTrack, options);
+	SDL_DestroyProperties(options);
+
+	if (!played)
 	{
 		stopMusic();
 		return;
 	}
 
 	mCurrentMusicPath = path;
-	Mix_HookMusicFinished(AudioManager::musicEnd_callback);
+	MIX_SetTrackStoppedCallback(mMusicTrack, AudioManager::musicEnd_callback, nullptr);
 }
 
-void AudioManager::musicEnd_callback()
+void AudioManager::musicEnd_callback(void* /*userdata*/, MIX_Track* /*track*/)
 {
 	if (!AudioManager::getInstance()->mPlayingSystemThemeSong.empty())
 	{
@@ -446,17 +506,27 @@ void AudioManager::stopMusic(bool fadeOut)
 	if (mCurrentMusic == NULL)
 		return;
 
-	Mix_HookMusicFinished(nullptr);
-
-	if (fadeOut)
+	if (mMusicTrack != nullptr)
 	{
-		// Fade-out is nicer !
-		while (!Mix_FadeOutMusic(500) && Mix_PlayingMusic())
-			SDL_Delay(100);
+		MIX_SetTrackStoppedCallback(mMusicTrack, nullptr, nullptr);
+
+		// Fade-out is nicer ! MIX_StopTrack counts frames, not
+		// milliseconds, and returns once the fade is scheduled rather
+		// than when it finishes, so wait the track out as before.
+		const Sint64 fadeFrames = fadeOut ? MIX_TrackMSToFrames(mMusicTrack, 500) : 0;
+		MIX_StopTrack(mMusicTrack, fadeFrames);
+
+		if (fadeOut)
+		{
+			while (MIX_TrackPlaying(mMusicTrack))
+				SDL_Delay(100);
+		}
+
+		// The track must let go of the audio before it can be freed.
+		MIX_SetTrackAudio(mMusicTrack, nullptr);
 	}
 
-	Mix_HaltMusic();
-	Mix_FreeMusic(mCurrentMusic);
+	MIX_DestroyAudio(mCurrentMusic);
 	mCurrentMusicPath = "";
 	mCurrentMusic = NULL;
 }
@@ -697,10 +767,10 @@ void AudioManager::setVideoPlaying(bool state)
 int AudioManager::getMaxMusicVolume()
 {
 	int linearVolume = Settings::getInstance()->getInt("MusicVolume");
-	double logarithmicVolume = (linearVolume == 0) ? 0 : std::pow(10.0, (linearVolume - 100) / 40.0) * MIX_MAX_VOLUME;
+	double logarithmicVolume = (linearVolume == 0) ? 0 : std::pow(10.0, (linearVolume - 100) / 40.0) * MAX_MUSIC_VOLUME;
 	int ret = static_cast<int>(logarithmicVolume);
-	if (ret > MIX_MAX_VOLUME)
-		return MIX_MAX_VOLUME;
+	if (ret > MAX_MUSIC_VOLUME)
+		return MAX_MUSIC_VOLUME;
 
 	if (ret < 0)
 		return 0;
@@ -731,7 +801,7 @@ void AudioManager::update(int deltaTime)
 				sInstance->mMusicVolume = minVol;
 		}
 
-		Mix_VolumeMusic((int)sInstance->mMusicVolume);
+		sInstance->applyMusicVolume();
 	}
 	else if (!sInstance->mVideoPlaying && sInstance->mMusicVolume != maxVol)
 	{
@@ -744,6 +814,6 @@ void AudioManager::update(int deltaTime)
 		else
 			sInstance->mMusicVolume = maxVol;
 
-		Mix_VolumeMusic((int)sInstance->mMusicVolume);
+		sInstance->applyMusicVolume();
 	}
 }

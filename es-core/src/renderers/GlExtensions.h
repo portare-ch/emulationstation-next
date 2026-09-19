@@ -1,14 +1,14 @@
 #pragma once
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #if defined(USE_OPENGLES_30)
 #include <GLES3/gl3.h>
 #elif defined(USE_OPENGLES_20)
-#include <SDL_opengles2.h>
+#include <SDL3/SDL_opengles2.h>
 #else
-#include <SDL_opengl.h>
-#include <SDL_opengl_glext.h>
+#include <SDL3/SDL_opengl.h>
+#include <SDL3/SDL_opengl_glext.h>
 
 namespace glext
 {
