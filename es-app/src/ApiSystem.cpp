@@ -30,7 +30,7 @@
 #include <sys/types.h>
 #include <algorithm>
 #include <fstream>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <pugixml/src/pugixml.hpp>
 #include <rapidjson/rapidjson.h>
 #include <rapidjson/pointer.h>

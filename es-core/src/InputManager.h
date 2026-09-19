@@ -2,7 +2,7 @@
 #ifndef ES_CORE_INPUT_MANAGER_H
 #define ES_CORE_INPUT_MANAGER_H
 
-#include <SDL_joystick.h>
+#include <SDL3/SDL_joystick.h>
 #include <map>
 #include <pugixml/src/pugixml.hpp>
 #include <utils/Delegate.h>

@@ -13,7 +13,7 @@
 #include <GLES/gl.h>
 #endif
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <vector>
 
 namespace Renderer
@@ -117,7 +117,7 @@ namespace Renderer
 
 	void GLES10Renderer::destroyContext()
 	{
-		SDL_GL_DeleteContext(sdlContext);
+		SDL_GL_DestroyContext(sdlContext);
 		sdlContext = nullptr;
 
 	} // destroyContext

@@ -5,7 +5,7 @@
 #include "components/TextComponent.h"
 #include "LocaleES.h"
 #include "Window.h"
-#include <SDL_timer.h>
+#include <SDL3/SDL_timer.h>
 
 #define PADDING_PX  (Renderer::getScreenWidth()*0.01)
 

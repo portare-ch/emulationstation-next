@@ -64,7 +64,7 @@ BusyComponent::~BusyComponent()
 
 void BusyComponent::setText(std::string txt)
 {
-	if (SDL_LockMutex(mutex) == 0)
+	SDL_LockMutex(mutex);
 	{
 		if (threadMessage != txt)
 		{
@@ -78,7 +78,7 @@ void BusyComponent::setText(std::string txt)
 
 void BusyComponent::render(const Transform4x4f& parentTrans)
 {
-	if (SDL_LockMutex(mutex) == 0)
+	SDL_LockMutex(mutex);
 	{
 		if (threadMessagechanged) 
 		{

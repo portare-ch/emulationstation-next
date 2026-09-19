@@ -17,9 +17,9 @@
 #include "Settings.h"
 #include "SystemData.h"
 #include "SystemScreenSaver.h"
-#include <SDL_events.h>
-#include <SDL_main.h>
-#include <SDL_timer.h>
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_main.h>
+#include <SDL3/SDL_timer.h>
 #include <iostream>
 #include <time.h>
 #include "LocaleES.h"
@@ -408,7 +408,7 @@ void playVideo()
 		{
 			do
 			{
-				if (event.type == SDL_QUIT)
+				if (event.type == SDL_EVENT_QUIT)
 					return;
 			} 
 			while (SDL_PollEvent(&event));
@@ -625,7 +625,7 @@ int main(int argc, char* argv[])
 
 	// Initialize input
 	InputManager::getInstance()->init();
-	SDL_StopTextInput();
+	SDL_StopTextInput(Renderer::getSDLWindow());
 
 	NetworkThread* nthread = new NetworkThread(&window);
 	HttpServerThread httpServer(&window);
@@ -736,7 +736,7 @@ int main(int argc, char* argv[])
 #ifdef BATOCERA
 			  // global hotkeys
 			  bool eventTaken = false;
-			  if(event.type == SDL_JOYBUTTONDOWN || event.type == SDL_JOYBUTTONUP)
+			  if(event.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN || event.type == SDL_EVENT_JOYSTICK_BUTTON_UP)
 			    {
 			      InputConfig* config = InputManager::getInstance()->getInputConfigByDevice(event.jbutton.which);
 			      if(config)
@@ -773,7 +773,7 @@ int main(int argc, char* argv[])
 
 				TRYCATCH("InputManager::parseEvent", InputManager::getInstance()->parseEvent(event, &window));
 
-				if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED && Settings::getInstance()->getBool("Windowed"))
+				if (event.type == SDL_EVENT_WINDOW_RESIZED && Settings::getInstance()->getBool("Windowed"))
 				{
 					if (Renderer::onScreenSizeChanged(event.window.data1, event.window.data2))
 					{
@@ -791,7 +791,7 @@ int main(int argc, char* argv[])
 					}
 				}				
 
-				if (event.type == SDL_QUIT)
+				if (event.type == SDL_EVENT_QUIT)
 					running = false;
 			} 
 			while(SDL_PollEvent(&event));
