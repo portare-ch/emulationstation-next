@@ -41,7 +41,7 @@ std::shared_ptr<Sound> Sound::getFromTheme(const std::shared_ptr<ThemeData>& the
 	return get(elem->get<std::string>("path"));
 }
 
-Sound::Sound(const std::string & path) : mSampleData(NULL), mPlayingChannel(-1)
+Sound::Sound(const std::string & path) : mSampleData(NULL), mTrack(nullptr)
 {
 	loadFile(path);
 }
@@ -71,11 +71,23 @@ void Sound::init()
 		return;
 
 	//load wav file via SDL
-	mSampleData = Mix_LoadWAV(mPath.c_str());
+	MIX_Mixer* mixer = AudioManager::getMixer();
+	if (mixer == nullptr)
+		return;
+
+	mSampleData = MIX_LoadAudio(mixer, mPath.c_str(), true);
 	if (mSampleData == nullptr)
 	{
 		LOG(LogError) << "Error loading sound \"" << mPath << "\"!\n" << "	" << SDL_GetError();
 		return;
+	}
+
+	mTrack = MIX_CreateTrack(mixer);
+	if (mTrack == nullptr)
+	{
+		LOG(LogError) << "Error creating a track for \"" << mPath << "\"!\n" << "	" << SDL_GetError();
+		MIX_DestroyAudio(mSampleData);
+		mSampleData = nullptr;
 	}
 }
 
@@ -85,7 +97,16 @@ void Sound::deinit()
 		return;
 
 	stop();
-	Mix_FreeChunk(mSampleData);
+
+	if (mTrack != nullptr)
+	{
+		// The track has to let go of the audio before it can be freed.
+		MIX_SetTrackAudio(mTrack, nullptr);
+		MIX_DestroyTrack(mTrack);
+		mTrack = nullptr;
+	}
+
+	MIX_DestroyAudio(mSampleData);
 	mSampleData = nullptr;	
 }
 
@@ -97,19 +118,22 @@ void Sound::play()
 	if (!Settings::getInstance()->getBool("EnableSounds"))
 		return;
 
-	mPlayingChannel = Mix_PlayChannel(-1, mSampleData, 0);
+	if (mTrack == nullptr)
+		return;
+
+	MIX_SetTrackAudio(mTrack, mSampleData);
+	MIX_PlayTrack(mTrack, 0);
 }
 
 bool Sound::isPlaying() const
 {	
-	return (mPlayingChannel >= 0);
+	return mTrack != nullptr && MIX_TrackPlaying(mTrack);
 }
 
 void Sound::stop()
 {
-	if (mPlayingChannel < 0)
+	if (mTrack == nullptr)
 		return;
 
-	//Mix_HaltChannel(mPlayingChannel);
-	mPlayingChannel = -1;
+	MIX_StopTrack(mTrack, 0);
 }

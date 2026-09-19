@@ -12,7 +12,7 @@
 #include "utils/FileSystemUtil.h"
 #include "utils/StringUtil.h"
 #include <thread>
-#include <SDL_timer.h>
+#include <SDL3/SDL_timer.h>
 #include "HfsDBScraper.h"
 #include "IGDBScraper.h"
 #include "utils/Uri.h"

@@ -2,7 +2,7 @@
 #include "Log.h"
 #include "utils/Platform.h"
 #include "Window.h"
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <iostream>
 #include <assert.h>
 #include <algorithm>
@@ -22,7 +22,7 @@
 #elif WIN32
 
 #include <set>
-#include <SDL_syswm.h>
+#include <SDL3/SDL_syswm.h>
 #include <hidsdi.h>
 #pragma comment(lib, "Hid.lib")
 
@@ -744,7 +744,7 @@ void GunManager::updateGuns(Window* window)
 
 		if (hasPhysicalGuns && !mMessageHookRegistered)
 		{
-			SDL_ShowCursor(0);
+			SDL_HideCursor();
 			enableRawInputCapture(true);			
 		}
 		else if (!hasPhysicalGuns && mMessageHookRegistered)

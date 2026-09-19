@@ -6,7 +6,7 @@
 #include "LocaleES.h"
 #include "Log.h"
 #include <chrono>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include "watchers/BatteryLevelWatcher.h"
 #include "watchers/NetworkStateWatcher.h"
@@ -35,7 +35,7 @@ NetworkThread::NetworkThread(Window* window) : mWindow(window)
 CheckPadsBatteryLevelComponent::CheckPadsBatteryLevelComponent()
 {
 #if WIN32		
-	mEnabled = false; // Windows uses SDL_JOYBATTERYUPDATED event instead
+	mEnabled = false; // Windows uses SDL_EVENT_JOYSTICK_BATTERY_UPDATED event instead
 #else
 	mEnabled = ApiSystem::getInstance()->isScriptingSupported(ApiSystem::PADSINFO);
 #endif

@@ -1,5 +1,5 @@
 #include "GlExtensions.h"
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "Log.h"
 
 #ifdef OPENGL_EXTENSIONS

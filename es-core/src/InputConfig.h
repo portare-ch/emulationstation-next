@@ -3,8 +3,8 @@
 #define ES_CORE_INPUT_CONFIG_H
 
 #include <CECInput.h>
-#include <SDL_joystick.h>
-#include <SDL_keyboard.h>
+#include <SDL3/SDL_joystick.h>
+#include <SDL3/SDL_keyboard.h>
 #include <map>
 #include <sstream>
 #include <vector>

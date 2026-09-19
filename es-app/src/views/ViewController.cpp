@@ -27,7 +27,7 @@
 #include "ApiSystem.h"
 #include "guis/GuiMsgBox.h"
 #include "utils/ThreadPool.h"
-#include <SDL_timer.h>
+#include <SDL3/SDL_timer.h>
 #include "TextToSpeech.h"
 #include "VolumeControl.h"
 #include "guis/GuiNetPlay.h"

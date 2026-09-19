@@ -9,7 +9,7 @@
 #ifdef HAVE_UDEV
 #include <libudev.h>
 #elif WIN32
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <Windows.h>
 #endif
 

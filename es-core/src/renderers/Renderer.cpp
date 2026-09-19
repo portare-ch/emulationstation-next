@@ -13,12 +13,12 @@
 #include "Settings.h"
 #include "utils/StringUtil.h"
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <stack>
 
 #if WIN32
 #include <Windows.h>
-#include <SDL_syswm.h>
+#include <SDL3/SDL_syswm.h>
 
 #include <dwmapi.h>
 #pragma comment(lib, "Dwmapi.lib")
@@ -119,24 +119,13 @@ namespace Renderer
 		{
 			ImageIO::flipPixelsVert(rawData, width, height);
 
-#if SDL_BYTEORDER == SDL_BIG_ENDIAN
-			unsigned int rmask = 0xFF000000;
-			unsigned int gmask = 0x00FF0000;
-			unsigned int bmask = 0x0000FF00;
-			unsigned int amask = 0x000000FF;
-#else
-			unsigned int rmask = 0x000000FF;
-			unsigned int gmask = 0x0000FF00;
-			unsigned int bmask = 0x00FF0000;
-			unsigned int amask = 0xFF000000;
-#endif
 			// try creating SDL surface from logo data
-			SDL_Surface* logoSurface = SDL_CreateRGBSurfaceFrom((void*)rawData, (int)width, (int)height, 32, (int)(width * 4), rmask, gmask, bmask, amask);
+			SDL_Surface* logoSurface = SDL_CreateSurfaceFrom((int)width, (int)height, SDL_PIXELFORMAT_RGBA32, (void*)rawData, (int)(width * 4));
 			
 			if(logoSurface != nullptr)
 			{
 				SDL_SetWindowIcon(sdlWindow, logoSurface);
-				SDL_FreeSurface(logoSurface);
+				SDL_DestroySurface(logoSurface);
 			}
 
 			delete[] rawData;
@@ -156,10 +145,13 @@ namespace Renderer
 
 		static SDL_DisplayMode dispMode;
 
-		initialCursorState = (SDL_ShowCursor(0) != 0);
+		initialCursorState = SDL_CursorVisible();
+		SDL_HideCursor();
 		if (windowWidth == 0)
 		{
-			SDL_GetDesktopDisplayMode(0, &dispMode);
+			const SDL_DisplayMode* desktopMode = SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay());
+			if (desktopMode != nullptr)
+				dispMode = *desktopMode;
 		}
 
 		windowWidth   = Settings::getInstance()->getInt("WindowWidth")   ? Settings::getInstance()->getInt("WindowWidth")   : dispMode.w;
@@ -180,11 +172,12 @@ namespace Renderer
 		int monitorId = Settings::getInstance()->getInt("MonitorID");
 		if (monitorId >= 0 && sdlWindowPosition == Vector2i(SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED))
 		{
-			int displays = SDL_GetNumVideoDisplays();
-			if (displays > monitorId)
+			int displays = 0;
+			SDL_DisplayID* displayIds = SDL_GetDisplays(&displays);
+			if (displayIds != nullptr && displays > monitorId)
 			{
 				SDL_Rect rc;
-				SDL_GetDisplayBounds(monitorId, &rc);
+				SDL_GetDisplayBounds(displayIds[monitorId], &rc);
 				
 				sdlWindowPosition = Vector2i(rc.x, rc.y);
 
@@ -222,7 +215,7 @@ namespace Renderer
 		if (Settings::getInstance()->getBool("AlwaysOnTop"))
 			windowFlags |= SDL_WINDOW_ALWAYS_ON_TOP;
 
-		windowFlags |= SDL_WINDOW_ALLOW_HIGHDPI;
+		windowFlags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #endif
 
 		if (Settings::getInstance()->getBool("Windowed"))
@@ -236,11 +229,13 @@ namespace Renderer
 			}
 		}
 
-		if((sdlWindow = SDL_CreateWindow("EmulationStation", sdlWindowPosition.x(), sdlWindowPosition.y(), windowWidth, windowHeight, windowFlags)) == nullptr)
+		if((sdlWindow = SDL_CreateWindow("EmulationStation", windowWidth, windowHeight, windowFlags)) == nullptr)
 		{
 			LOG(LogError) << "Error creating SDL window!\n\t" << SDL_GetError();
 			return false;
 		}
+
+		SDL_SetWindowPosition(sdlWindow, sdlWindowPosition.x(), sdlWindowPosition.y());
 
 		if (Settings::getInstance()->getBool("Windowed"))
 			SDL_SetWindowMinimumSize(sdlWindow, 320, 200);
@@ -270,7 +265,7 @@ namespace Renderer
 			int y;
 			SDL_GetWindowPosition(sdlWindow, &x, &y);
 
-			SDL_SetWindowBordered(sdlWindow, SDL_bool::SDL_TRUE);
+			SDL_SetWindowBordered(sdlWindow, true);
 			
 			SDL_SysWMinfo wmInfo;
 			SDL_VERSION(&wmInfo.version);
@@ -305,7 +300,7 @@ namespace Renderer
 			}
 			else
 			{
-				SDL_SetWindowBordered(sdlWindow, SDL_bool::SDL_FALSE);
+				SDL_SetWindowBordered(sdlWindow, false);
 				SDL_SetWindowPosition(sdlWindow, x, y);
 			}
 		}
@@ -329,7 +324,10 @@ namespace Renderer
 		SDL_DestroyWindow(sdlWindow);
 		sdlWindow = nullptr;
 
-		SDL_ShowCursor(initialCursorState);
+		if (initialCursorState)
+			SDL_ShowCursor();
+		else
+			SDL_HideCursor();
 
 		SDL_Quit();
 
@@ -398,14 +396,13 @@ namespace Renderer
 			int h; int w;
 			SDL_GetWindowSize(sdlWindow, &w, &h);
 
-			SDL_DisplayMode DM;
-			SDL_GetCurrentDisplayMode(0, &DM);
+			const SDL_DisplayMode* DM = SDL_GetCurrentDisplayMode(SDL_GetPrimaryDisplay());
 
-			if (w == DM.w && h == DM.h)
+			if (DM != nullptr && w == DM->w && h == DM->h)
 				SDL_SetWindowPosition(sdlWindow, 0, 0);
 		}
 		
-		SDL_SetWindowInputFocus(sdlWindow);		
+		SDL_RaiseWindow(sdlWindow);		
 	}
 #endif
 
@@ -1088,7 +1085,7 @@ namespace Renderer
 			return;
 #endif
 
-		SDL_SetWindowResizable(sdlWindow, resizable ? SDL_bool::SDL_TRUE : SDL_bool::SDL_FALSE);
+		SDL_SetWindowResizable(sdlWindow, resizable ? true : false);
 	}
 
 	bool onScreenSizeChanged(int width, int height)

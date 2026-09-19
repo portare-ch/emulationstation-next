@@ -11,7 +11,7 @@
 #include <regex>
 #include <string>
 #include <iostream>
-#include <SDL_timer.h>
+#include <SDL3/SDL_timer.h>
 
 static std::string mapSettingsName(const std::string& name)
 {

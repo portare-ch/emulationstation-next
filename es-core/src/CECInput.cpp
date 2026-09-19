@@ -2,7 +2,7 @@
 
 #ifdef HAVE_LIBCEC
 #include "Log.h"
-#include <SDL_events.h>
+#include <SDL3/SDL_events.h>
 #include <iostream> // bad bad cecloader
 #include <libcec/cecloader.h>
 #ifdef _RPI_
